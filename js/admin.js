@@ -2587,128 +2587,120 @@ const Admin = (function () {
 
     if (tasks.length === 0) { alert('没有符合条件的数据可导出'); return; }
 
-    // ========== 工作表1：汇总表 ==========
-    const summaryRows = [];
-    summaryRows.push(['结果统计与分析 - 汇总']);
-    summaryRows.push([]);
-    summaryRows.push(['序号', '工号', '姓名', '部门', '职务', '考核方案', '考核周期', '最终得分', '绩效系数', '状态']);
+    // ========== 按照用户模板格式导出 ==========
+    // 模板格式：单个工作表，每人多行（每个指标一行），人员信息只在第一行显示
+    const rows = [];
 
-    tasks.forEach((t, i) => {
-      const emp = DB.getById('employees', t.employeeId);
-      const plan = DB.getById('assessmentPlans', t.planId);
-      const statusText = App.getTaskStatusText ? App.getTaskStatusText(t.status) : (t.status || '未知');
-      const score = t.finalScore || t.supervisorTotalScore || t.selfTotalScore || '';
-      const coeff = t.finalCoefficient != null ? t.finalCoefficient : (score ? (score / 100).toFixed(2) : '');
-      summaryRows.push([
-        i + 1,
-        emp ? emp.empNo : '',
-        emp ? emp.name : '',
-        emp ? App.getDeptName(emp.deptId) : '',
-        emp ? App.getPositionName(emp.positionId) : '',
-        plan ? plan.name : '',
-        t.cycle || '',
-        score,
-        coeff,
-        statusText
-      ]);
-    });
+    // 标题行
+    rows.push(['序号', '工号', '姓名', '部门', '职务', '指标项', '权重', '目标值', '实际值', '完成率', '完成情况描述', '自评分', '上级分', '校准分', '最终得分', '绩效系数']);
 
-    summaryRows.push([]);
-    summaryRows.push(['编制', '', '', '', '', '', '', '审核', '', '', '批准', '']);
-
-    // ========== 工作表2：详细数据表 ==========
-    const detailRows = [];
-    detailRows.push(['结果统计与分析 - 详细数据']);
-    detailRows.push([]);
-    detailRows.push([
-      '序号', '工号', '姓名', '部门', '职务', '考核方案', '考核周期',
-      '指标名称', '指标类型', '权重(%)',
-      '自评分', '上级评分', '校准分',
-      '完成率(%)', '实际值', '目标值',
-      '自评描述', '上级评价',
-      '最终得分', '绩效系数', '状态'
-    ]);
-
-    let detailSeq = 1;
+    let seq = 1;
     tasks.forEach(t => {
       const emp = DB.getById('employees', t.employeeId);
-      const plan = DB.getById('assessmentPlans', t.planId);
-      const statusText = App.getTaskStatusText ? App.getTaskStatusText(t.status) : (t.status || '未知');
       const finalScore = t.finalScore || t.supervisorTotalScore || t.selfTotalScore || '';
       const coeff = t.finalCoefficient != null ? t.finalCoefficient : (finalScore ? (finalScore / 100).toFixed(2) : '');
 
-      // 如果有指标数据，按指标导出
+      // 如果有指标数据，按指标导出（每个指标一行）
       if (t.indicators && t.indicators.length > 0) {
-        t.indicators.forEach(ind => {
-          detailRows.push([
-            detailSeq++,
-            emp ? emp.empNo : '',
-            emp ? emp.name : '',
-            emp ? App.getDeptName(emp.deptId) : '',
-            emp ? App.getPositionName(emp.positionId) : '',
-            plan ? plan.name : '',
-            t.cycle || '',
-            ind.name || '',
-            ind.type || '',
-            ind.weight || '',
-            ind.selfScore || '',
-            ind.supervisorScore || '',
-            ind.calibratedScore || '',
-            ind.completionRate || '',
-            ind.actualValue || '',
-            ind.targetValue || '',
-            ind.selfDesc || '',
-            ind.supervisorDesc || '',
-            finalScore,
-            coeff,
-            statusText
-          ]);
+        t.indicators.forEach((ind, idx) => {
+          // 第一个指标行：填写人员信息
+          if (idx === 0) {
+            rows.push([
+              seq,
+              emp ? emp.empNo : '',
+              emp ? emp.name : '',
+              emp ? App.getDeptName(emp.deptId) : '',
+              emp ? App.getPositionName(emp.positionId) : '',
+              ind.name || '',
+              ind.weight || '',
+              ind.targetValue || '',
+              ind.actualValue || '',
+              ind.completionRate || '',
+              ind.selfDesc || '',
+              ind.selfScore || '',
+              ind.supervisorScore || '',
+              ind.calibratedScore || '',
+              finalScore,
+              coeff
+            ]);
+          } else {
+            // 后续指标行：人员信息留空
+            rows.push([
+              null,  // 序号留空
+              null,  // 工号留空
+              null,  // 姓名留空
+              null,  // 部门留空
+              null,  // 职务留空
+              ind.name || '',
+              ind.weight || '',
+              ind.targetValue || '',
+              ind.actualValue || '',
+              ind.completionRate || '',
+              ind.selfDesc || '',
+              ind.selfScore || '',
+              ind.supervisorScore || '',
+              ind.calibratedScore || '',
+              null,  // 最终得分留空
+              null   // 绩效系数留空
+            ]);
+          }
         });
       } else {
         // 如果没有指标数据，导出一行汇总信息
-        detailRows.push([
-          detailSeq++,
+        rows.push([
+          seq,
           emp ? emp.empNo : '',
           emp ? emp.name : '',
           emp ? App.getDeptName(emp.deptId) : '',
           emp ? App.getPositionName(emp.positionId) : '',
-          plan ? plan.name : '',
-          t.cycle || '',
-          '汇总', '', '',
+          '汇总',
+          '',
+          '',
+          '',
+          '',
+          '',
           t.selfTotalScore || '',
           t.supervisorTotalScore || '',
           t.finalScore || '',
-          '', '', '',
-          '',
-          t.supervisorComment || '',
           finalScore,
-          coeff,
-          statusText
+          coeff
         ]);
       }
+
+      // 每个人之间添加空行
+      rows.push([]);
+      seq++;
     });
 
-    // ========== 生成Excel（两个工作表） ==========
+    // 添加底部签字行
+    rows.push([]);
+    rows.push(['编制', '', '', '', '', '', '', '', '', '', '', '', '', '', '审核', '', '', '', '批准', '']);
+
+    // 生成Excel（单个工作表）
     const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.aoa_to_sheet(rows);
 
-    // 汇总表
-    const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
-    wsSummary['!cols'] = [
-      {wch:6}, {wch:10}, {wch:8}, {wch:12}, {wch:12},
-      {wch:20}, {wch:12}, {wch:10}, {wch:10}, {wch:12}
+    // 设置列宽
+    ws['!cols'] = [
+      {wch:6},   // 序号
+      {wch:10},  // 工号
+      {wch:8},   // 姓名
+      {wch:12},  // 部门
+      {wch:12},  // 职务
+      {wch:20},  // 指标项
+      {wch:8},   // 权重
+      {wch:12},  // 目标值
+      {wch:12},  // 实际值
+      {wch:10},  // 完成率
+      {wch:30},  // 完成情况描述
+      {wch:10},  // 自评分
+      {wch:10},  // 上级分
+      {wch:10},  // 校准分
+      {wch:10},  // 最终得分
+      {wch:10}   // 绩效系数
     ];
-    XLSX.utils.book_append_sheet(wb, wsSummary, '汇总表');
 
-    // 详细数据表
-    const wsDetail = XLSX.utils.aoa_to_sheet(detailRows);
-    wsDetail['!cols'] = [
-      {wch:6}, {wch:10}, {wch:8}, {wch:12}, {wch:12},
-      {wch:20}, {wch:12}, {wch:20}, {wch:10}, {wch:10},
-      {wch:10}, {wch:10}, {wch:10}, {wch:12}, {wch:12},
-      {wch:12}, {wch:30}, {wch:30}, {wch:10}, {wch:10}, {wch:12}
-    ];
-    XLSX.utils.book_append_sheet(wb, wsDetail, '详细数据');
-
+    XLSX.utils.book_append_sheet(wb, ws, '结果统计');
     XLSX.writeFile(wb, '结果统计与分析.xlsx');
   }
 
