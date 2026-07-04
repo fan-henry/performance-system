@@ -3,20 +3,27 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>浼佷笟缁╂晥绠＄悊绯荤粺</title>
-  <link rel="stylesheet" href="css/style.css?v=73">
+  <title>企业绩效管理系统</title>
+  <link rel="stylesheet" href="css/style.css?v=77">
   <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
 </head>
 <body>
   <div id="app"></div>
-  <script src="js/db.js?v=73"></script>
-  <script src="js/app.js?v=73"></script>
-  <script src="js/employee.js?v=73"></script>
-  <script src="js/admin.js?v=73"></script>
+  <script src="js/db.js?v=77"></script>
+  <script src="js/app.js?v=77"></script>
+  <script src="js/employee.js?v=77"></script>
+  <script src="js/admin.js?v=77"></script>
   <script>
-    // 鍚姩搴旂敤
+    // 先用本地数据启动应用
     App.init();
+    // 后台从云端同步最新数据
+    DB.init().then(function() {
+      console.log('[PMS] 云端数据同步完成');
+    }).catch(function(e) {
+      console.warn('[PMS] 云端同步失败，使用本地数据:', e);
+    });
   </script>
 </body>
 </html>

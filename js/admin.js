@@ -822,7 +822,24 @@ const Admin = (function () {
       { id: 'admin', name: '总经理', desc: '全部管理权限' },
     ];
 
-    const modules = [
+    // Module key → actual nav page key mapping
+    var moduleNavMap = {
+      'home': ['home', 'emp-home', 'admin-home'],
+      'indicator': ['indicator-config'],
+      'self-eval': ['self-eval'],
+      'result': ['result-query'],
+      'print': ['print'],
+      'org': ['admin-org'],
+      'indicators-lib': ['admin-indicators'],
+      'plans': ['admin-plans'],
+      'tasks': ['admin-tasks', 'hr-review'],
+      'calibration': ['admin-calibration'],
+      'stats': ['admin-stats'],
+      'config': ['admin-config'],
+      'supervisor-eval': ['supervisor-eval'],
+    };
+
+    var modules = [
       { key: 'home', name: '首页/工作台' },
       { key: 'indicator', name: '绩效指标配置' },
       { key: 'self-eval', name: '绩效自评' },
@@ -838,9 +855,38 @@ const Admin = (function () {
       { key: 'supervisor-eval', name: '上级评价' },
     ];
 
+    // Default permissions (matches original hardcoded values)
+    var defaultPerms = {
+      'home': { employee: true, supervisor: true, hr: true, sysadmin: true, admin: true },
+      'indicator': { employee: true, supervisor: true, hr: false, sysadmin: false, admin: false },
+      'self-eval': { employee: true, supervisor: true, hr: true, sysadmin: true, admin: true },
+      'result': { employee: true, supervisor: true, hr: true, sysadmin: true, admin: true },
+      'print': { employee: true, supervisor: true, hr: true, sysadmin: true, admin: true },
+      'org': { employee: false, supervisor: false, hr: true, sysadmin: true, admin: true },
+      'indicators-lib': { employee: false, supervisor: false, hr: true, sysadmin: false, admin: true },
+      'plans': { employee: false, supervisor: false, hr: true, sysadmin: false, admin: true },
+      'tasks': { employee: false, supervisor: true, hr: true, sysadmin: false, admin: true },
+      'calibration': { employee: false, supervisor: false, hr: true, sysadmin: false, admin: true },
+      'stats': { employee: false, supervisor: true, hr: true, sysadmin: true, admin: true },
+      'config': { employee: false, supervisor: false, hr: false, sysadmin: true, admin: true },
+      'supervisor-eval': { employee: false, supervisor: true, hr: false, sysadmin: false, admin: false },
+    };
+
+    // Load saved permissions from DB
+    var savedPerms = DB.getSetting('rolePermissions') || {};
+    // Merge defaults with saved
+    var currentPerms = {};
+    modules.forEach(function(m) {
+      currentPerms[m.key] = {};
+      roles.forEach(function(r) {
+        var savedVal = savedPerms[m.key] && savedPerms[m.key][r.id] !== undefined ? savedPerms[m.key][r.id] : null;
+        currentPerms[m.key][r.id] = savedVal !== null ? savedVal : (defaultPerms[m.key] && defaultPerms[m.key][r.id] !== undefined ? defaultPerms[m.key][r.id] : false);
+      });
+    });
+
     container.innerHTML = `
       <div class="alert alert-info">
-        <span>💡 系统预置五类角色，支持精细化到页面级与按钮级的权限控制。</span>
+        <span>💡 勾选对应模块来控制各角色导航栏可见的页面。修改后点击「保存权限」生效。</span>
       </div>
       <table class="data-table">
         <thead>
@@ -857,40 +903,43 @@ const Admin = (function () {
         </tbody>
       </table>
 
-      <h3 class="font-semibold mt-4 mb-2">页面权限矩阵</h3>
-      <table class="data-table">
+      <div class="flex justify-between items-center mt-4 mb-2">
+        <h3 class="font-semibold">页面权限矩阵</h3>
+        <button class="btn btn-primary btn-sm" onclick="Admin.savePermissionMatrix()">💾 保存权限</button>
+      </div>
+      <table class="data-table" id="permMatrixTable">
         <thead>
           <tr>
             <th>功能模块</th>
-            ${roles.map(r => `<th style="text-align:center;">${r.name}</th>`).join('')}
+            ${roles.map(r => '<th style="text-align:center;">' + r.name + '</th>').join('')}
           </tr>
         </thead>
         <tbody>
           ${modules.map(m => {
-            const permissions = {
-              'home': [true, true, true, true, true],
-              'indicator': [true, true, false, false, false],
-              'self-eval': [true, true, true, true, true],
-              'result': [true, true, true, true, true],
-              'print': [true, true, true, true, true],
-              'org': [false, false, true, true, true],
-              'indicators-lib': [false, false, true, false, true],
-              'plans': [false, false, true, false, true],
-              'tasks': [false, true, true, false, true],
-              'calibration': [false, false, true, false, true],
-              'stats': [false, true, true, true, true],
-              'config': [false, false, false, true, true],
-              'supervisor-eval': [false, true, false, false, false],
-            };
-            const perms = permissions[m.key] || [];
-            return `<tr>
-              <td class="font-semibold">${m.name}</td>
-              ${roles.map((r, i) => `<td style="text-align:center;">${perms[i] ? '✅' : '❌'}</td>`).join('')}
-            </tr>`;
+            return '<tr>' +
+              '<td class="font-semibold">' + m.name + '</td>' +
+              roles.map(r => {
+                var checked = currentPerms[m.key][r.id] ? ' checked' : '';
+                return '<td style="text-align:center;"><input type="checkbox" data-module="' + m.key + '" data-role="' + r.id + '"' + checked + ' style="width:18px;height:18px;cursor:pointer;"></td>';
+              }).join('') +
+            '</tr>';
           }).join('')}
         </tbody>
       </table>
     `;
+  }
+
+  function savePermissionMatrix() {
+    var perms = {};
+    document.querySelectorAll('#permMatrixTable input[type="checkbox"]').forEach(function(cb) {
+      var mod = cb.dataset.module;
+      var role = cb.dataset.role;
+      if (!perms[mod]) perms[mod] = {};
+      perms[mod][role] = cb.checked;
+    });
+    DB.setSetting('rolePermissions', perms);
+    DB.log(App.currentUser.name, '权限配置', '更新页面权限矩阵');
+    App.toast('权限配置已保存，重新登录后生效', 'success');
   }
 
   // ========== 指标库管理 ==========
@@ -1950,11 +1999,28 @@ const Admin = (function () {
         }
       }
 
-      // 退回到"上级评价"：清除校准及之后的数据
+      // 退回到"上级评价"：清除上级评价及校准数据
       if (targetStatus === 'supervisor_evaluating') {
+        updateData.supervisorTotalScore = null;
+        updateData.supervisorComment = '';
         updateData.finalScore = null;
         updateData.finalCoefficient = null;
         updateData.finalGrade = null;
+        if (task.indicators) {
+          updateData.indicators = task.indicators.map(ind => ({
+            ...ind,
+            supervisorScore: null,
+            calibratedScore: null,
+          }));
+        }
+      }
+
+      // 退回到"HR校准"：清除校准结果数据
+      if (targetStatus === 'supervisor_done') {
+        updateData.finalScore = null;
+        updateData.finalCoefficient = null;
+        updateData.finalGrade = null;
+        updateData.calibrated = false;
         if (task.indicators) {
           updateData.indicators = task.indicators.map(ind => ({
             ...ind,
@@ -1963,11 +2029,30 @@ const Admin = (function () {
         }
       }
 
-      // 退回到"HR校准"：清除最终系数/等级（校准分数本身保留）
-      if (targetStatus === 'supervisor_done') {
+      // 退回到"计划确认"：清除所有后续数据，要求重新确认考核计划
+      if (targetStatus === 'pending_confirm') {
+        updateData.selfTotalScore = null;
+        updateData.supervisorTotalScore = null;
+        updateData.finalScore = null;
         updateData.finalCoefficient = null;
         updateData.finalGrade = null;
-        // calibratedScore 保留，供重新校准
+        updateData.supervisorComment = '';
+        updateData.confirmTime = null;
+        updateData.selfEvalTime = null;
+        updateData.calibrated = false;
+
+        // 清除所有指标的评分数据和相关信息
+        if (task.indicators) {
+          updateData.indicators = task.indicators.map(ind => ({
+            ...ind,
+            selfScore: null,
+            supervisorScore: null,
+            calibratedScore: null,
+            completionRate: null,
+            actualValue: null,
+            description: null,
+          }));
+        }
       }
 
       DB.update('assessmentTasks', taskId, updateData);
@@ -1995,7 +2080,7 @@ const Admin = (function () {
     const emp = DB.getById('employees', t.employeeId);
     const dept = emp ? DB.getById('departments', emp.deptId) : null;
     const plan = DB.getById('assessmentPlans', t.planId);
-    const score = t.finalScore || t.supervisorTotalScore || 0;
+    const score = t.finalScore || t.supervisorTotalScore;
     const isPercent = plan && plan.scoreMode === 'percentage';
     const grade = t.finalGrade || (plan && !isPercent ? App.getGrade(score, plan)?.grade : null);
     const coeff = App.calcCoefficient(score);
@@ -3258,9 +3343,26 @@ XLSX.writeFile(wb, '结果统计与分析.xlsx');
     }
 
     App.confirm('确定退回该自评？员工将重新进行绩效自评。', () => {
-      // 先静默保存当前调整
-      saveHRReview(taskId, true);
-      DB.update('assessmentTasks', taskId, { status: 'pending_self_eval' });
+      // 清除自评数据，员工需重新填写
+      var updateData = {
+        status: 'pending_self_eval',
+        selfTotalScore: null,
+        hrComment: comment,
+        returnReason: comment,
+        returnedAt: new Date().toISOString(),
+        returnedFrom: task.status,
+      };
+      if (task.indicators) {
+        updateData.indicators = task.indicators.map(function(ind) {
+          return Object.assign({}, ind, {
+            selfScore: null,
+            completionRate: null,
+            actualValue: null,
+            description: null,
+          });
+        });
+      }
+      DB.update('assessmentTasks', taskId, updateData);
       DB.log(App.currentUser.name, 'HR退回', `退回 ${App.getEmployeeName(task.employeeId)} 的自评，原因：${comment}`);
       App.closeModal();
       App.toast('已退回，员工需重新完成自评！', 'success');
@@ -3558,6 +3660,7 @@ XLSX.writeFile(wb, '结果统计与分析.xlsx');
     doHRReview,
     onHRCompletionRateChange,
     rejectHRReview,
+    savePermissionMatrix,
     saveHRReview,
     approveHRReview,
     doSupervisorEval,

@@ -23,8 +23,8 @@ const Employee = (function () {
     const myTasks = App.getMyTasks();
     const pendingSelfEval = myTasks.filter(t => t.status === 'pending_self_eval' || t.status === 'confirmed');
     const pendingConfirmTasks = myTasks.filter(t => t.status === 'pending_confirm');
-    const activeTasks = myTasks.filter(t => !['completed', 'rejected'].includes(t.status));
-    const completedTasks = myTasks.filter(t => t.status === 'completed');
+    const activeTasks = myTasks.filter(t => !['completed', 'rejected', 'calibrated'].includes(t.status));
+    const completedTasks = myTasks.filter(t => ['completed', 'calibrated'].includes(t.status));
     // 已完成的不显示
     const progressTasks = activeTasks;
 
@@ -40,8 +40,8 @@ const Employee = (function () {
         'hr_reviewed': { step: 3, label: '等待上级评价' },
         'supervisor_evaluating': { step: 3, label: '上级评价中' },
         'supervisor_done': { step: 4, label: '等待HR校准' },
-        'calibrated': { step: 5, label: '已校准' },
-        'completed': { step: 6, label: '已完成' },
+        'calibrated': { step: 5, label: '已校准（流程完成）' },
+        'completed': { step: 5, label: '已完成' },
       };
       progressHtml = progressTasks.map(task => {
         const info = statusMap[task.status] || { step: 0, label: '' };
@@ -62,9 +62,7 @@ const Employee = (function () {
               <div class="step-line"></div>
               <div class="step ${info.step === 3 ? 'active' : info.step > 3 ? 'done' : ''}"><div class="step-num">4</div><span>上级评价</span></div>
               <div class="step-line"></div>
-              <div class="step ${info.step === 4 ? 'active' : info.step > 4 ? 'done' : ''}"><div class="step-num">5</div><span>HR校准</span></div>
-              <div class="step-line"></div>
-              <div class="step ${info.step >= 6 ? 'done' : info.step === 5 ? 'active' : ''}"><div class="step-num">6</div><span>结果确认</span></div>
+              <div class="step ${info.step >= 5 ? 'done' : info.step === 4 ? 'active' : ''}"><div class="step-num">5</div><span>HR校准</span></div>
             </div>
             <div class="alert alert-info">${info.label}</div>
             ${task.status === 'pending_confirm' ? `
@@ -1235,7 +1233,7 @@ const Employee = (function () {
 
   // ========== 绩效打印 ==========
   function renderPrint(container) {
-    const myTasks = App.getMyTasks().filter(t => t.status === 'completed' || t.supervisorTotalScore !== null);
+    const myTasks = App.getMyTasks().filter(t => ['completed', 'calibrated'].includes(t.status) || t.supervisorTotalScore !== null);
     container.innerHTML = `
       <div class="card">
         <div class="card-header"><h3>绩效打印</h3></div>

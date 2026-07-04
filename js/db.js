@@ -1,9 +1,19 @@
 /**
- * 数据层 - 基于localStorage的数据管理
+ * 数据层 - 基于Supabase云端数据库 + localStorage备份
  * 包含种子数据和CRUD操作
  */
 const DB = (function () {
   const STORAGE_KEY = 'pms_data_v11';
+  const SUPABASE_URL = 'https://teaprkizzoxvsdytayhf.supabase.co';
+  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlYXBya2l6em94dnNkeXRheWhmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwMzYzODYsImV4cCI6MjA5ODYxMjM4Nn0.nR9OJRPuA40w_wESKC9CJruWu4JO6vcIVfmA0GL9Stc';
+  let supabaseClient = null;
+
+  function getSupabase() {
+    if (!supabaseClient && typeof supabase !== 'undefined') {
+      supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    }
+    return supabaseClient;
+  }
 
   // 种子数据
   const seedData = {
@@ -146,8 +156,13 @@ const DB = (function () {
   }
 
   function save() {
-    if (cache) {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(cache));
+    if (!cache) return;
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(cache));
+    var sb = getSupabase();
+    if (sb) {
+      sb.from("pms_data").upsert({ id: 1, data: cache, updated_at: new Date().toISOString() }).then(function(r) {
+        if (r.error) console.warn("Supabase save error:", r.error.message);
+      });
     }
   }
 
@@ -218,9 +233,47 @@ const DB = (function () {
     return entry;
   }
 
+  async function refreshFromCloud() {
+    var sb = getSupabase();
+    if (!sb) return null;
+    try {
+      var r = await sb.from("pms_data").select("data").eq("id", 1).single();
+      if (r.data && r.data.data) {
+        cache = r.data.data;
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(cache));
+        return cache;
+      }
+    } catch(e) { console.warn("Cloud refresh failed:", e.message); }
+    return null;
+  }
+
+  async function init() {
+    var cloud = await refreshFromCloud();
+    if (cloud) return cloud;
+    load();
+    if (cache) save();
+    return cache;
+  }
+
+  // Settings: key-value store for system configuration
+  function getSetting(key) {
+    const data = load();
+    if (!data.settings) return null;
+    return data.settings[key] !== undefined ? data.settings[key] : null;
+  }
+
+  function setSetting(key, value) {
+    const data = load();
+    if (!data.settings) data.settings = {};
+    data.settings[key] = value;
+    save();
+    return value;
+  }
+
   return {
-    load, save, reset, genId,
+    load, save, reset, genId, init, refreshFromCloud,
     getAll, getById, insert, update, remove, log,
+    getSetting, setSetting,
     get data() { return load(); }
   };
 })();

@@ -97,6 +97,35 @@ const App = (function () {
     }
   }
 
+  // Check if a page is allowed for the current role based on permission matrix
+  function hasPermission(pageKey) {
+    var savedPerms = DB.getSetting('rolePermissions');
+    if (!savedPerms) return true; // No custom permissions, use defaults
+    var role = currentUser.role;
+    // Map page keys to module keys
+    var keyMap = {
+      'home': 'home', 'emp-home': 'home', 'admin-home': 'home',
+      'indicator-config': 'indicator',
+      'self-eval': 'self-eval',
+      'result-query': 'result',
+      'print': 'print',
+      'admin-org': 'org',
+      'admin-indicators': 'indicators-lib',
+      'admin-plans': 'plans',
+      'admin-tasks': 'tasks', 'hr-review': 'tasks',
+      'admin-calibration': 'calibration',
+      'admin-stats': 'stats',
+      'admin-config': 'config',
+      'supervisor-eval': 'supervisor-eval',
+    };
+    var modKey = keyMap[pageKey];
+    if (!modKey) return true; // Unknown pages are allowed by default
+    if (savedPerms[modKey] && savedPerms[modKey][role] !== undefined) {
+      return savedPerms[modKey][role];
+    }
+    return true; // Default: allow
+  }
+
   // ========== 前台布局（员工端） ==========
   function renderEmployeeLayout() {
     const menus = [
@@ -105,7 +134,7 @@ const App = (function () {
       { key: 'self-eval', label: '绩效自评', icon: '✏️', badge: getPendingSelfEvalCount() },
       { key: 'result-query', label: '绩效结果查询', icon: '📋' },
       { key: 'print', label: '绩效打印', icon: '🖨️' },
-    ];
+    ].filter(m => hasPermission(m.key));
 
     document.getElementById('app').innerHTML = `
       <div class="app-layout">
@@ -160,7 +189,7 @@ const App = (function () {
       { key: 'self-eval', label: '绩效自评', icon: '✏️', badge: getPendingSelfEvalCount() },
       { key: 'result-query', label: '绩效结果查询', icon: '📋' },
       { key: 'print', label: '绩效打印', icon: '🖨️' },
-    ];
+    ].filter(m => hasPermission(m.key));
 
     const supervisorMenus = [
       { key: 'supervisor-eval', label: '上级评价', icon: '⭐', badge: getSupervisorPending() },
@@ -228,7 +257,7 @@ const App = (function () {
         { key: 'admin-home', label: '工作台', icon: '🏠' },
         { key: 'supervisor-eval', label: '上级评价', icon: '✏️', badge: getSupervisorPending() },
         { key: 'emp-home', label: '我的绩效', icon: '👤' },
-      ];
+      ].filter(m => hasPermission(m.key));
     } else if (currentUser.role === 'hr') {
       groupTitle = 'HR管理端';
       menus = [
@@ -242,7 +271,7 @@ const App = (function () {
         { key: 'admin-stats', label: '结果统计与分析', icon: '📈' },
         { key: 'admin-config', label: '系统配置', icon: '⚙️' },
         { key: 'emp-home', label: '我的绩效', icon: '👤' },
-      ];
+      ].filter(m => hasPermission(m.key));
     } else if (currentUser.role === 'sysadmin') {
       groupTitle = '系统管理端';
       menus = [
@@ -251,7 +280,7 @@ const App = (function () {
         { key: 'admin-config', label: '系统配置', icon: '⚙️' },
         { key: 'admin-stats', label: '结果统计与分析', icon: '📈' },
         { key: 'emp-home', label: '我的绩效', icon: '👤' },
-      ];
+      ].filter(m => hasPermission(m.key));
     } else if (currentUser.role === 'admin') {
       groupTitle = '总经办';
       menus = [
@@ -259,7 +288,7 @@ const App = (function () {
         { key: 'supervisor-eval', label: '上级评价', icon: '⭐', badge: getSupervisorPending() },
         { key: 'admin-calibration', label: '绩效校准', icon: '⚖️', badge: getCalibrationPending() },
         { key: 'emp-home', label: '我的绩效', icon: '👤' },
-      ];
+      ].filter(m => hasPermission(m.key));
     }
 
     const roleLabels = {
@@ -659,6 +688,7 @@ const App = (function () {
     buildDeptTree, calcCompletionRate, calcIndicatorScore, calcTotalScore,
     calcCoefficient, getGrade, getTaskStatusText, getTaskStatusClass,
     getMyTasks, getSubordinates, getHRReviewPending, showModal, formatDate, getCurrentCycle,
+    hasPermission,
     toggleUserMenu,
     showChangePassword,
     closeChangePassword,
