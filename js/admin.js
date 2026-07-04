@@ -2570,57 +2570,147 @@ const Admin = (function () {
 
   // CSV导出（直接从任务数据读取，支持分组结构）
   function exportStats() {
-  // 获取筛选条件（与查询按钮一致）
-  const planCbs = document.querySelectorAll('#statsPlanDropdown input[type="checkbox"]:checked');
-  const cycleCbs = document.querySelectorAll('#statsCycleDropdown input[type="checkbox"]:checked');
-  const statusCbs = document.querySelectorAll('#statsStatusDropdown input[type="checkbox"]:checked');
+    // 获取筛选条件（与查询按钮一致）
+    const planCbs = document.querySelectorAll('#statsPlanDropdown input[type="checkbox"]:checked');
+    const cycleCbs = document.querySelectorAll('#statsCycleDropdown input[type="checkbox"]:checked');
+    const statusCbs = document.querySelectorAll('#statsStatusDropdown input[type="checkbox"]:checked');
 
-  const planIds = Array.from(planCbs).map(cb => cb.value);
-  const cycleVals = Array.from(cycleCbs).map(cb => cb.value);
-  const statusVals = Array.from(statusCbs).map(cb => cb.value);
+    const planIds = Array.from(planCbs).map(cb => cb.value);
+    const cycleVals = Array.from(cycleCbs).map(cb => cb.value);
+    const statusVals = Array.from(statusCbs).map(cb => cb.value);
 
-  // 获取任务数据（与renderStatsGroups相同逻辑）
-  let tasks = getEvaluatedTasks();
-  if (planIds.length > 0 && !planIds.includes('all')) tasks = tasks.filter(t => planIds.includes(t.planId));
-  if (cycleVals.length > 0 && !cycleVals.includes('all')) tasks = tasks.filter(t => cycleVals.includes(t.cycle));
-  if (statusVals.length > 0) tasks = tasks.filter(t => statusVals.includes(t.status));
+    // 获取任务数据（与renderStatsGroups相同逻辑）
+    let tasks = getEvaluatedTasks();
+    if (planIds.length > 0 && !planIds.includes('all')) tasks = tasks.filter(t => planIds.includes(t.planId));
+    if (cycleVals.length > 0 && !cycleVals.includes('all')) tasks = tasks.filter(t => cycleVals.includes(t.cycle));
+    if (statusVals.length > 0) tasks = tasks.filter(t => statusVals.includes(t.status));
 
-  if (tasks.length === 0) { alert('没有符合条件的数据可导出'); return; }
+    if (tasks.length === 0) { alert('没有符合条件的数据可导出'); return; }
 
-  // 构建Excel数据 - 与列表列一致
-  const rows = [];
-  rows.push(['结果统计与分析']);
-  rows.push([]);
-  rows.push(['序号', '工号', '姓名', '部门', '职务', '最终得分', '绩效系数', '状态']);
+    // ========== 工作表1：汇总表 ==========
+    const summaryRows = [];
+    summaryRows.push(['结果统计与分析 - 汇总']);
+    summaryRows.push([]);
+    summaryRows.push(['序号', '工号', '姓名', '部门', '职务', '考核方案', '考核周期', '最终得分', '绩效系数', '状态']);
 
+    tasks.forEach((t, i) => {
+      const emp = DB.getById('employees', t.employeeId);
+      const plan = DB.getById('assessmentPlans', t.planId);
+      const statusText = App.getTaskStatusText ? App.getTaskStatusText(t.status) : (t.status || '未知');
+      const score = t.finalScore || t.supervisorTotalScore || t.selfTotalScore || '';
+      const coeff = t.finalCoefficient != null ? t.finalCoefficient : (score ? (score / 100).toFixed(2) : '');
+      summaryRows.push([
+        i + 1,
+        emp ? emp.empNo : '',
+        emp ? emp.name : '',
+        emp ? App.getDeptName(emp.deptId) : '',
+        emp ? App.getPositionName(emp.positionId) : '',
+        plan ? plan.name : '',
+        t.cycle || '',
+        score,
+        coeff,
+        statusText
+      ]);
+    });
 
-  tasks.forEach((t, i) => {
-    const emp = DB.getById('employees', t.employeeId);
-    const statusText = App.getTaskStatusText ? App.getTaskStatusText(t.status) : (t.status || '未知');
-    const score = t.finalScore || t.supervisorScore || t.selfScore || '';
-    const coeff = t.finalCoefficient != null ? t.finalCoefficient : (score ? (score / 100).toFixed(2) : '');
-    rows.push([
-      i + 1,
-      emp ? emp.empNo : '',
-      emp ? emp.name : '',
-      emp ? App.getDeptName(emp.deptId) : '',
-      emp ? App.getPositionName(emp.positionId) : '',
-      score,
-      coeff,
-      statusText
+    summaryRows.push([]);
+    summaryRows.push(['编制', '', '', '', '', '', '', '审核', '', '', '批准', '']);
+
+    // ========== 工作表2：详细数据表 ==========
+    const detailRows = [];
+    detailRows.push(['结果统计与分析 - 详细数据']);
+    detailRows.push([]);
+    detailRows.push([
+      '序号', '工号', '姓名', '部门', '职务', '考核方案', '考核周期',
+      '指标名称', '指标类型', '权重(%)',
+      '自评分', '上级评分', '校准分',
+      '完成率(%)', '实际值', '目标值',
+      '自评描述', '上级评价',
+      '最终得分', '绩效系数', '状态'
     ]);
-  });
 
-  rows.push([]);
-  rows.push(['编制', '', '', '', '', '审核', '', '', '', '', '批准', '']);
+    let detailSeq = 1;
+    tasks.forEach(t => {
+      const emp = DB.getById('employees', t.employeeId);
+      const plan = DB.getById('assessmentPlans', t.planId);
+      const statusText = App.getTaskStatusText ? App.getTaskStatusText(t.status) : (t.status || '未知');
+      const finalScore = t.finalScore || t.supervisorTotalScore || t.selfTotalScore || '';
+      const coeff = t.finalCoefficient != null ? t.finalCoefficient : (finalScore ? (finalScore / 100).toFixed(2) : '');
 
-  // 生成Excel
-  const wb = XLSX.utils.book_new();
-  const ws = XLSX.utils.aoa_to_sheet(rows);
-  ws['!cols'] = [{wch:6},{wch:10},{wch:8},{wch:12},{wch:12},{wch:10},{wch:10},{wch:12}];
-  XLSX.utils.book_append_sheet(wb, ws, '结果统计');
-XLSX.writeFile(wb, '结果统计与分析.xlsx');
-}
+      // 如果有指标数据，按指标导出
+      if (t.indicators && t.indicators.length > 0) {
+        t.indicators.forEach(ind => {
+          detailRows.push([
+            detailSeq++,
+            emp ? emp.empNo : '',
+            emp ? emp.name : '',
+            emp ? App.getDeptName(emp.deptId) : '',
+            emp ? App.getPositionName(emp.positionId) : '',
+            plan ? plan.name : '',
+            t.cycle || '',
+            ind.name || '',
+            ind.type || '',
+            ind.weight || '',
+            ind.selfScore || '',
+            ind.supervisorScore || '',
+            ind.calibratedScore || '',
+            ind.completionRate || '',
+            ind.actualValue || '',
+            ind.targetValue || '',
+            ind.selfDesc || '',
+            ind.supervisorDesc || '',
+            finalScore,
+            coeff,
+            statusText
+          ]);
+        });
+      } else {
+        // 如果没有指标数据，导出一行汇总信息
+        detailRows.push([
+          detailSeq++,
+          emp ? emp.empNo : '',
+          emp ? emp.name : '',
+          emp ? App.getDeptName(emp.deptId) : '',
+          emp ? App.getPositionName(emp.positionId) : '',
+          plan ? plan.name : '',
+          t.cycle || '',
+          '汇总', '', '',
+          t.selfTotalScore || '',
+          t.supervisorTotalScore || '',
+          t.finalScore || '',
+          '', '', '',
+          '',
+          t.supervisorComment || '',
+          finalScore,
+          coeff,
+          statusText
+        ]);
+      }
+    });
+
+    // ========== 生成Excel（两个工作表） ==========
+    const wb = XLSX.utils.book_new();
+
+    // 汇总表
+    const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+    wsSummary['!cols'] = [
+      {wch:6}, {wch:10}, {wch:8}, {wch:12}, {wch:12},
+      {wch:20}, {wch:12}, {wch:10}, {wch:10}, {wch:12}
+    ];
+    XLSX.utils.book_append_sheet(wb, wsSummary, '汇总表');
+
+    // 详细数据表
+    const wsDetail = XLSX.utils.aoa_to_sheet(detailRows);
+    wsDetail['!cols'] = [
+      {wch:6}, {wch:10}, {wch:8}, {wch:12}, {wch:12},
+      {wch:20}, {wch:12}, {wch:20}, {wch:10}, {wch:10},
+      {wch:10}, {wch:10}, {wch:10}, {wch:12}, {wch:12},
+      {wch:12}, {wch:30}, {wch:30}, {wch:10}, {wch:10}, {wch:12}
+    ];
+    XLSX.utils.book_append_sheet(wb, wsDetail, '详细数据');
+
+    XLSX.writeFile(wb, '结果统计与分析.xlsx');
+  }
 
 
 
