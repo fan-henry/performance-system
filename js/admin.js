@@ -2603,6 +2603,8 @@ const Admin = (function () {
       // 如果有指标数据，按指标导出（每个指标一行）
       if (t.indicators && t.indicators.length > 0) {
         t.indicators.forEach((ind, idx) => {
+          const indicator = DB.getById('indicators', ind.indicatorId);
+          const indName = indicator ? indicator.name : (ind.name || '未知指标');
           // 第一个指标行：填写人员信息
           if (idx === 0) {
             rows.push([
@@ -2611,7 +2613,7 @@ const Admin = (function () {
               emp ? emp.name : '',
               emp ? App.getDeptName(emp.deptId) : '',
               emp ? App.getPositionName(emp.positionId) : '',
-              ind.name || '',
+              indName,
               ind.weight || '',
               ind.targetValue || '',
               ind.actualValue || '',
@@ -2631,7 +2633,7 @@ const Admin = (function () {
               null,  // 姓名留空
               null,  // 部门留空
               null,  // 职务留空
-              ind.name || '',
+              indName,
               ind.weight || '',
               ind.targetValue || '',
               ind.actualValue || '',
