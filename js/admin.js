@@ -2456,6 +2456,8 @@ const Admin = (function () {
     const score = t.finalScore || t.supervisorTotalScore || 0;
     const isPercent = plan && plan.scoreMode === 'percentage';
     const stInfo = ALL_STATUS_MAP[t.status] || { text: t.status, tag: 'tag-gray' };
+    const renDanChouCoef = t.renDanChouCoef != null ? t.renDanChouCoef : '';
+    const remark = t.remark || '';
     return `<tr>
       <td>${seq}</td>
       <td>${emp ? emp.empNo : '-'}</td>
@@ -2466,6 +2468,8 @@ const Admin = (function () {
         ? (t.finalCoefficient != null ? t.finalCoefficient : '-')
         : (t.finalGrade ? `<span class="grade-display grade-${t.finalGrade}" style="font-size:14px;">${t.finalGrade}</span>` : '-')
       }</td>
+      <td><input type="text" class="form-input" style="width:80px; padding:2px 6px; font-size:13px; text-align:center;" value="${renDanChouCoef}" placeholder="—" onchange="Admin.saveStatsField('${t.id}','renDanChouCoef',this.value)" /></td>
+      <td><input type="text" class="form-input" style="width:120px; padding:2px 6px; font-size:13px;" value="${remark}" placeholder="—" onchange="Admin.saveStatsField('${t.id}','remark',this.value)" /></td>
       <td><span class="tag ${stInfo.tag}">${stInfo.text}</span></td>
       <td><button class="btn btn-sm" onclick="Admin.viewStatsDetail('${t.id}')">📋 详情</button></td>
     </tr>`;
@@ -2509,7 +2513,7 @@ const Admin = (function () {
             </div>
             <table class="data-table" style="margin:0;" data-plan="${planId}" data-cycle="${cycle}">
               <thead>
-                <tr><th>序号</th><th>工号</th><th>姓名</th><th>部门</th><th>最终得分</th><th>绩效系数</th><th>状态</th><th>详情</th></tr>
+                <tr><th>序号</th><th>工号</th><th>姓名</th><th>部门</th><th>最终得分</th><th>绩效系数</th><th>人单酬系数</th><th>备注</th><th>状态</th><th>详情</th></tr>
               </thead>
               <tbody>
                 ${cycleTasks.map(t => renderStatsRow(t, seq++)).join('')}
@@ -2771,6 +2775,8 @@ const Admin = (function () {
             const dept = emp ? DB.getById('departments', emp.deptId) : null;
             const pos = emp ? DB.getById('positions', emp.positionId) : null;
             const coef = t.finalCoefficient != null ? t.finalCoefficient : '-';
+            const renDanChouCoef = t.renDanChouCoef != null ? t.renDanChouCoef : '';
+            const remark = t.remark || '';
             return `<tr>
               <td style="padding:3px 5px; border:1px solid #000; width:5%; font-size:9pt;">${i + 1}</td>
               <td style="padding:3px 5px; border:1px solid #000; width:15%; text-align:left; font-size:9pt;">${dept ? dept.name : '-'}</td>
@@ -2778,8 +2784,8 @@ const Admin = (function () {
               <td style="padding:3px 5px; border:1px solid #000; width:10%; text-align:left; font-size:9pt;">${emp ? emp.name : '-'}</td>
               <td style="padding:3px 5px; border:1px solid #000; width:12%; text-align:left; font-size:9pt;">${pos ? pos.name : '-'}</td>
               <td style="padding:3px 5px; border:1px solid #000; width:10%; font-size:9pt;">${coef}</td>
-              <td style="padding:3px 5px; border:1px solid #000; width:10%; font-size:9pt;"></td>
-              <td style="padding:3px 5px; border:1px solid #000; width:12%; font-size:9pt;"></td>
+              <td style="padding:3px 5px; border:1px solid #000; width:10%; font-size:9pt;">${renDanChouCoef}</td>
+              <td style="padding:3px 5px; border:1px solid #000; width:12%; font-size:9pt; text-align:left;">${remark}</td>
             </tr>`;
           }).join('');
           return `<div>
@@ -2839,6 +2845,13 @@ const Admin = (function () {
     doc.close();
     iframe.contentWindow.focus();
     iframe.contentWindow.onafterprint = function() { iframe.remove(); };
+  }
+
+  // 保存人单酬系数/备注到任务数据
+  function saveStatsField(taskId, field, value) {
+    const task = DB.getById('assessmentTasks', taskId);
+    if (!task) return;
+    DB.update('assessmentTasks', taskId, { [field]: value });
   }
 
   // ========== 结果统计详情弹窗 ==========
@@ -3735,6 +3748,7 @@ const Admin = (function () {
     onStatsMultiSelectChange,
     exportStats,
     printStats,
+    saveStatsField,
     viewStatsDetail,
     switchConfigTab,
     editAnnouncement,
