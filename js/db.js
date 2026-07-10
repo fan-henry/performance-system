@@ -135,6 +135,11 @@ const DB = (function () {
     const idx = arr.findIndex(item => item.id === id);
     if (idx >= 0) {
       const removed = arr.splice(idx, 1)[0];
+      // 记录删除标记，确保云端同步（mergeData）时不会把已删除的记录重新合并回来
+      if (!data.settings) data.settings = {};
+      if (!data.settings._deleted) data.settings._deleted = {};
+      if (!data.settings._deleted[table]) data.settings._deleted[table] = {};
+      data.settings._deleted[table][id] = Date.now();
       save();
       return removed;
     }
@@ -154,9 +159,27 @@ const DB = (function () {
     return entry;
   }
 
+  // 合并删除标记：云端与本地取并集（按各 id 的最新删除时间戳，任一端删除即生效）
+  function mergeDeleted(cloudDeleted, localDeleted) {
+    var merged = {};
+    function gather(src) {
+      if (!src) return;
+      for (var t in src) {
+        if (!merged[t]) merged[t] = {};
+        for (var id in src[t]) {
+          if (!merged[t][id] || src[t][id] > merged[t][id]) merged[t][id] = src[t][id];
+        }
+      }
+    }
+    gather(localDeleted);
+    gather(cloudDeleted);
+    return merged;
+  }
+
   // 合并云端和本地数据：按记录ID逐条比较，取 _updatedAt 更新的版本
   // 没有 _updatedAt 的记录（旧数据）：保留本地，避免云端脏数据覆盖
   // cloudEpoch > localEpoch 时：本地记录若不存在于云端且无 _updatedAt，视为已清理的种子数据，予以删除
+  // settings._deleted 中的 id：两端删除标记取并集，被标记的记录一律剔除（确保删除能跨云端同步）
   function mergeData(cloud, local, cloudEpoch) {
     var localEpoch = (local && local.settings && local.settings._cleanEpoch) || 0;
     var shouldClean = cloudEpoch && cloudEpoch > localEpoch;
@@ -165,12 +188,15 @@ const DB = (function () {
     if (shouldClean && result.settings) {
       result.settings._cleanEpoch = cloudEpoch;
     }
+    // 合并删除标记（并集）
+    var mergedDeleted = mergeDeleted(cloud.settings && cloud.settings._deleted, local.settings && local.settings._deleted);
     for (var table in cloud) {
       if (!Array.isArray(cloud[table])) {
-        // 非数组（如 settings）：合并 key，cloud 优先
+        // 非数组（如 settings）：合并 key，cloud 优先（_deleted 单独合并，不走此分支）
         if (table === 'settings') {
           if (!result.settings) result.settings = {};
           for (var k in cloud.settings) {
+            if (k === '_deleted') continue; // _deleted 由 mergeDeleted 处理
             result.settings[k] = cloud.settings[k]; // cloud 优先（含 _cleanEpoch）
           }
         }
@@ -189,8 +215,6 @@ const DB = (function () {
         if (!localItem || !localItem.id) return true;
         seenIds[localItem.id] = true;
         // 云端清理后，本地记录不存在于云端 → 已删除的种子/废弃数据，清除
-        // 不再检查 _updatedAt：因为种子数据在之前同步时已被加上 _updatedAt，
-        // 仅靠有无 _updatedAt 无法区分种子数据和真实数据
         if (shouldClean && !cloudMap[localItem.id]) {
           return false; // 删除此条（云端已无此记录，说明已被清理）
         }
@@ -211,13 +235,22 @@ const DB = (function () {
         if (cloudTime > 0 && localTime === 0) return cloudItem;
         return localItem; // 都没有，保留本地
       });
-      // 添加仅在云端存在的记录
+      // 添加仅在云端存在的记录（跳过已删除的）
       cloud[table].forEach(function(cloudItem) {
         if (cloudItem && cloudItem.id && !seenIds[cloudItem.id]) {
+          if (mergedDeleted[table] && mergedDeleted[table][cloudItem.id]) return; // 已删除，不合并回来
           result[table].push(JSON.parse(JSON.stringify(cloudItem)));
         }
       });
+      // 剔除被标记删除的记录（本端/他端删除后，云端仍推送回来的情况）
+      if (mergedDeleted[table]) {
+        result[table] = result[table].filter(function(item) {
+          return !(item && item.id && mergedDeleted[table][item.id]);
+        });
+      }
     }
+    // 写回合并后的删除标记
+    if (result.settings) result.settings._deleted = mergedDeleted;
     return result;
   }
 
