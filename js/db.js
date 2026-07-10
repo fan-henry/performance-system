@@ -70,7 +70,8 @@ const DB = (function () {
       sb.from("pms_data").select("data").eq("id", 1).single().then(function(r) {
         var cloudData = (r.data && r.data.data) ? r.data.data : null;
         if (cloudData) {
-          cache = mergeData(cloudData, cache);
+          var cloudEpoch = (cloudData.settings && cloudData.settings._cleanEpoch) || 0;
+          cache = mergeData(cloudData, cache, cloudEpoch); // 传递 cloudEpoch 防止种子数据推回云端
           localStorage.setItem(STORAGE_KEY, JSON.stringify(cache));
         }
         sb.from("pms_data").upsert({ id: 1, data: cache, updated_at: new Date().toISOString() }).then(function(r2) {
@@ -187,9 +188,11 @@ const DB = (function () {
       result[table] = result[table].filter(function(localItem) {
         if (!localItem || !localItem.id) return true;
         seenIds[localItem.id] = true;
-        // 云端清理后，本地记录不存在于云端且无 _updatedAt → 已删除的种子数据，清除
-        if (shouldClean && !cloudMap[localItem.id] && !localItem._updatedAt) {
-          return false; // 删除此条
+        // 云端清理后，本地记录不存在于云端 → 已删除的种子/废弃数据，清除
+        // 不再检查 _updatedAt：因为种子数据在之前同步时已被加上 _updatedAt，
+        // 仅靠有无 _updatedAt 无法区分种子数据和真实数据
+        if (shouldClean && !cloudMap[localItem.id]) {
+          return false; // 删除此条（云端已无此记录，说明已被清理）
         }
         return true; // 保留，后续替换为更新版本
       }).map(function(localItem) {
