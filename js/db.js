@@ -155,15 +155,22 @@ const DB = (function () {
 
   // 合并云端和本地数据：按记录ID逐条比较，取 _updatedAt 更新的版本
   // 没有 _updatedAt 的记录（旧数据）：保留本地，避免云端脏数据覆盖
-  function mergeData(cloud, local) {
+  // cloudEpoch > localEpoch 时：本地记录若不存在于云端且无 _updatedAt，视为已清理的种子数据，予以删除
+  function mergeData(cloud, local, cloudEpoch) {
+    var localEpoch = (local && local.settings && local.settings._cleanEpoch) || 0;
+    var shouldClean = cloudEpoch && cloudEpoch > localEpoch;
     var result = JSON.parse(JSON.stringify(local));
+    // 同步清理版本号
+    if (shouldClean && result.settings) {
+      result.settings._cleanEpoch = cloudEpoch;
+    }
     for (var table in cloud) {
       if (!Array.isArray(cloud[table])) {
         // 非数组（如 settings）：合并 key，cloud 优先
         if (table === 'settings') {
           if (!result.settings) result.settings = {};
           for (var k in cloud.settings) {
-            if (!(k in result.settings)) result.settings[k] = cloud.settings[k];
+            result.settings[k] = cloud.settings[k]; // cloud 优先（含 _cleanEpoch）
           }
         }
         continue;
@@ -177,9 +184,16 @@ const DB = (function () {
         if (item && item.id) cloudMap[item.id] = item;
       });
       var seenIds = {};
-      result[table] = result[table].map(function(localItem) {
-        if (!localItem || !localItem.id) return localItem;
+      result[table] = result[table].filter(function(localItem) {
+        if (!localItem || !localItem.id) return true;
         seenIds[localItem.id] = true;
+        // 云端清理后，本地记录不存在于云端且无 _updatedAt → 已删除的种子数据，清除
+        if (shouldClean && !cloudMap[localItem.id] && !localItem._updatedAt) {
+          return false; // 删除此条
+        }
+        return true; // 保留，后续替换为更新版本
+      }).map(function(localItem) {
+        if (!localItem || !localItem.id) return localItem;
         var cloudItem = cloudMap[localItem.id];
         if (!cloudItem) return localItem; // 仅本地有，保留
         var localTime = localItem._updatedAt || 0;
@@ -211,8 +225,9 @@ const DB = (function () {
       var r = await sb.from("pms_data").select("data").eq("id", 1).single();
       if (r.data && r.data.data) {
         var cloudData = r.data.data;
+        var cloudEpoch = (cloudData.settings && cloudData.settings._cleanEpoch) || 0;
         load(); // 确保本地 cache 已加载
-        cache = mergeData(cloudData, cache); // 合并而非替换
+        cache = mergeData(cloudData, cache, cloudEpoch); // 传递 cloudEpoch 以支持数据清理同步
         localStorage.setItem(STORAGE_KEY, JSON.stringify(cache));
         return cache;
       }
