@@ -2082,7 +2082,8 @@ const Admin = (function () {
     const plan = DB.getById('assessmentPlans', t.planId);
     const score = t.finalScore || t.supervisorTotalScore;
     const isPercent = plan && plan.scoreMode === 'percentage';
-    const grade = t.finalGrade || (plan && !isPercent ? App.getGrade(score, plan)?.grade : null);
+    // 等级制下不根据得分自动默认等级，仅显示已评定的等级（未评定时显示“-”）
+    const grade = t.finalGrade || null;
     const coeff = App.calcCoefficient(score);
     const gradeCell = isPercent
       ? `<span class="font-bold" style="${coeff >= 1 ? 'color:var(--success);' : 'color:var(--danger);'}">${coeff.toFixed(2)}</span>`
@@ -2253,7 +2254,8 @@ const Admin = (function () {
     const currentScore = task.finalScore || task.supervisorTotalScore || 0;
     const isPercent = plan && plan.scoreMode === 'percentage';
     const hasConcurrent = task.concurrentWeight > 0 && task.indicators.some(i => i.positionType === 'concurrent');
-    const currentGrade = task.finalGrade || (!isPercent ? (App.getGrade(currentScore, plan)?.grade || 'C') : App.calcCoefficient(currentScore).toFixed(2));
+    // 等级制下不根据得分自动默认等级：若已有评定结果则选中，否则留空让人工选择
+    const currentGrade = task.finalGrade || (isPercent ? App.calcCoefficient(currentScore).toFixed(2) : '');
 
     const gradeSection = isPercent ? `
         <div class="form-group">
@@ -2262,10 +2264,12 @@ const Admin = (function () {
           <div class="form-hint">系数 = 得分 ÷ 100，随得分联动</div>
         </div>` : `
         <div class="form-group">
-          <label class="form-label">调整后等级</label>
+          <label class="form-label">调整后等级<span class="required">*</span></label>
           <select class="form-select" name="adjustedGrade">
+            ${!task.finalGrade ? `<option value="" disabled ${currentGrade === '' ? 'selected' : ''}>— 请选择等级 —</option>` : ''}
             ${plan.gradeRules.map(r => `<option value="${r.grade}" ${currentGrade === r.grade ? 'selected' : ''}>${r.grade} - ${r.label}（≥${r.minScore}分，系数${r.coefficient}）</option>`).join('')}
           </select>
+          <div class="form-hint">请人工选择等级（不按得分自动默认）</div>
         </div>`;
 
     const html = `
@@ -2331,10 +2335,12 @@ const Admin = (function () {
     const task = DB.getById('assessmentTasks', taskId);
     const plan = DB.getById('assessmentPlans', task.planId);
     const isPercent = plan && plan.scoreMode === 'percentage';
+    // 等级制下必须人工选择等级，否则拦截
+    if (!isPercent && !form.adjustedGrade.value) { App.toast('请选择调整后等级', 'error'); return; }
     const beforeScore = task.finalScore || task.supervisorTotalScore || 0;
     const beforeCoeff = App.calcCoefficient(beforeScore);
     const afterCoeff = App.calcCoefficient(adjustedScore);
-    const beforeGrade = task.finalGrade || (isPercent ? beforeCoeff.toFixed(2) : (App.getGrade(beforeScore, plan)?.grade || 'C'));
+    const beforeGrade = task.finalGrade || (isPercent ? beforeCoeff.toFixed(2) : '未评定');
     const adjustedGrade = isPercent ? afterCoeff.toFixed(2) : form.adjustedGrade.value;
     const gradeRule = !isPercent ? plan.gradeRules.find(r => r.grade === adjustedGrade) : null;
 
