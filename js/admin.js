@@ -2592,17 +2592,27 @@ const Admin = (function () {
     if (tasks.length === 0) { alert('没有符合条件的数据可导出'); return; }
 
     // ========== 按照用户模板格式导出 ==========
-    // 模板格式：单个工作表，每人多行（每个指标一行），人员信息只在第一行显示
+    // 模板格式：单个工作表，每人多行（每个指标一行），人员信息列按人员进行纵向单元格合并
     const rows = [];
+
+    // 列索引常量
+    const C = { seq:0, empNo:1, name:2, dept:3, position:4, indicator:5, weight:6, target:7, actual:8, rate:9, desc:10, self:11, sup:12, calib:13, finalScore:14, coeff:15 };
+    // 需要按人员进行纵向合并的列：工号、姓名、部门、职务、最终得分、绩效系数
+    const MERGE_COLS = [C.empNo, C.name, C.dept, C.position, C.finalScore, C.coeff];
 
     // 标题行
     rows.push(['序号', '工号', '姓名', '部门', '职务', '指标项', '权重', '目标值', '实际值', '完成率', '完成情况描述', '自评分', '上级分', '校准分', '最终得分', '绩效系数']);
 
+    const merges = [];   // 单元格合并信息
     let seq = 1;
     tasks.forEach(t => {
       const emp = DB.getById('employees', t.employeeId);
       const finalScore = t.finalScore || t.supervisorTotalScore || t.selfTotalScore || '';
       const coeff = t.finalCoefficient != null ? t.finalCoefficient : (finalScore ? (finalScore / 100).toFixed(2) : '');
+      // 完成情况描述：优先取 ind.description（自评页填写的“完成情况描述”），其次 ind.completionDesc
+      const getDesc = (ind) => (ind.description != null && String(ind.description).trim() !== '' ? ind.description : (ind.completionDesc || ''));
+
+      const dataStart = rows.length;  // 该人员首条数据行（合并区间起点）
 
       // 如果有指标数据，按指标导出（每个指标一行）
       if (t.indicators && t.indicators.length > 0) {
@@ -2622,7 +2632,7 @@ const Admin = (function () {
               ind.targetValue || '',
               ind.actualValue || '',
               ind.completionRate || '',
-              ind.selfDesc || '',
+              getDesc(ind),
               ind.selfScore || '',
               ind.supervisorScore || '',
               ind.calibratedScore || '',
@@ -2630,7 +2640,7 @@ const Admin = (function () {
               coeff
             ]);
           } else {
-            // 后续指标行：人员信息留空
+            // 后续指标行：人员信息留空（合并后由首行统一展示）
             rows.push([
               null,  // 序号留空
               null,  // 工号留空
@@ -2642,7 +2652,7 @@ const Admin = (function () {
               ind.targetValue || '',
               ind.actualValue || '',
               ind.completionRate || '',
-              ind.selfDesc || '',
+              getDesc(ind),
               ind.selfScore || '',
               ind.supervisorScore || '',
               ind.calibratedScore || '',
@@ -2673,6 +2683,12 @@ const Admin = (function () {
         ]);
       }
 
+      // 记录该人员的合并区间（仅当占多行时才合并）
+      const dataEnd = rows.length - 1;  // 该人员最后一条数据行（合并区间终点）
+      if (dataEnd > dataStart) {
+        MERGE_COLS.forEach(c => merges.push({ s: { r: dataStart, c }, e: { r: dataEnd, c } }));
+      }
+
       // 每个人之间添加空行
       rows.push([]);
       seq++;
@@ -2685,6 +2701,9 @@ const Admin = (function () {
     // 生成Excel（单个工作表）
     const wb = XLSX.utils.book_new();
     const ws = XLSX.utils.aoa_to_sheet(rows);
+
+    // 单元格合并：按人员纵向合并 工号/姓名/部门/职务/最终得分/绩效系数
+    if (merges.length > 0) ws['!merges'] = merges;
 
     // 设置列宽
     ws['!cols'] = [
