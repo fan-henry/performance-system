@@ -160,8 +160,21 @@ const DB = (function () {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(cache));
     var sb = getSupabase();
     if (sb) {
-      sb.from("pms_data").upsert({ id: 1, data: cache, updated_at: new Date().toISOString() }).then(function(r) {
-        if (r.error) console.warn("Supabase save error:", r.error.message);
+      // 先拉取云端最新数据，合并后再推送，避免覆盖其他人的修改
+      sb.from("pms_data").select("data").eq("id", 1).single().then(function(r) {
+        var cloudData = (r.data && r.data.data) ? r.data.data : null;
+        if (cloudData) {
+          cache = mergeData(cloudData, cache);
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(cache));
+        }
+        sb.from("pms_data").upsert({ id: 1, data: cache, updated_at: new Date().toISOString() }).then(function(r2) {
+          if (r2.error) console.warn("Supabase save error:", r2.error.message);
+        });
+      }).catch(function(e) {
+        console.warn("Cloud merge-save failed, push directly:", e.message);
+        sb.from("pms_data").upsert({ id: 1, data: cache, updated_at: new Date().toISOString() }).then(function(r2) {
+          if (r2.error) console.warn("Supabase save error:", r2.error.message);
+        });
       });
     }
   }
@@ -191,6 +204,7 @@ const DB = (function () {
     const data = load();
     if (!data[table]) data[table] = [];
     if (!item.id) item.id = genId(table.charAt(0).toUpperCase());
+    item._updatedAt = Date.now();
     data[table].push(item);
     save();
     return item;
@@ -201,7 +215,7 @@ const DB = (function () {
     const arr = data[table] || [];
     const idx = arr.findIndex(item => item.id === id);
     if (idx >= 0) {
-      arr[idx] = { ...arr[idx], ...updates };
+      arr[idx] = { ...arr[idx], ...updates, _updatedAt: Date.now() };
       save();
       return arr[idx];
     }
@@ -233,13 +247,66 @@ const DB = (function () {
     return entry;
   }
 
+  // 合并云端和本地数据：按记录ID逐条比较，取 _updatedAt 更新的版本
+  // 没有 _updatedAt 的记录（旧数据）：保留本地，避免云端脏数据覆盖
+  function mergeData(cloud, local) {
+    var result = JSON.parse(JSON.stringify(local));
+    for (var table in cloud) {
+      if (!Array.isArray(cloud[table])) {
+        // 非数组（如 settings）：合并 key，cloud 优先
+        if (table === 'settings') {
+          if (!result.settings) result.settings = {};
+          for (var k in cloud.settings) {
+            if (!(k in result.settings)) result.settings[k] = cloud.settings[k];
+          }
+        }
+        continue;
+      }
+      if (!result[table]) {
+        result[table] = JSON.parse(JSON.stringify(cloud[table]));
+        continue;
+      }
+      var cloudMap = {};
+      cloud[table].forEach(function(item) {
+        if (item && item.id) cloudMap[item.id] = item;
+      });
+      var seenIds = {};
+      result[table] = result[table].map(function(localItem) {
+        if (!localItem || !localItem.id) return localItem;
+        seenIds[localItem.id] = true;
+        var cloudItem = cloudMap[localItem.id];
+        if (!cloudItem) return localItem; // 仅本地有，保留
+        var localTime = localItem._updatedAt || 0;
+        var cloudTime = cloudItem._updatedAt || 0;
+        // 都有 _updatedAt：取更新的
+        // 只有一方有 _updatedAt：取有 _updatedAt 的（说明刚被修改过）
+        // 都没有 _updatedAt：保留本地（避免云端脏数据覆盖本地进度）
+        if (localTime > 0 && cloudTime > 0) {
+          return localTime >= cloudTime ? localItem : cloudItem;
+        }
+        if (localTime > 0 && cloudTime === 0) return localItem;
+        if (cloudTime > 0 && localTime === 0) return cloudItem;
+        return localItem; // 都没有，保留本地
+      });
+      // 添加仅在云端存在的记录
+      cloud[table].forEach(function(cloudItem) {
+        if (cloudItem && cloudItem.id && !seenIds[cloudItem.id]) {
+          result[table].push(JSON.parse(JSON.stringify(cloudItem)));
+        }
+      });
+    }
+    return result;
+  }
+
   async function refreshFromCloud() {
     var sb = getSupabase();
     if (!sb) return null;
     try {
       var r = await sb.from("pms_data").select("data").eq("id", 1).single();
       if (r.data && r.data.data) {
-        cache = r.data.data;
+        var cloudData = r.data.data;
+        load(); // 确保本地 cache 已加载
+        cache = mergeData(cloudData, cache); // 合并而非替换
         localStorage.setItem(STORAGE_KEY, JSON.stringify(cache));
         return cache;
       }

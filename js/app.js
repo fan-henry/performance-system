@@ -680,6 +680,23 @@ const App = (function () {
     setTimeout(function() { closeChangePassword(); }, 1500);
   }
 
+  // 云端同步完成后：刷新当前用户数据并重新渲染界面
+  function refreshAfterSync() {
+    if (!currentUser) return;
+    // 从DB重新获取当前用户最新数据（密码可能被其他浏览器修改）
+    var freshUser = DB.getById('employees', currentUser.id);
+    if (freshUser) {
+      currentUser = freshUser;
+      sessionStorage.setItem('pms_session', JSON.stringify(currentUser));
+    }
+    // 重新渲染当前页面
+    if (currentPage) {
+      navigate(currentPage);
+    } else {
+      renderApp();
+    }
+  }
+
   return {
     init, login, logout, navigate, handleLogin,
     closeModal, confirm, confirmCallback, toast,
@@ -693,5 +710,6 @@ const App = (function () {
     showChangePassword,
     closeChangePassword,
     changePassword,
+    refreshAfterSync,
   };
 })();
