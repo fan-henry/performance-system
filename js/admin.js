@@ -2080,7 +2080,8 @@ const Admin = (function () {
     const emp = DB.getById('employees', t.employeeId);
     const dept = emp ? DB.getById('departments', emp.deptId) : null;
     const plan = DB.getById('assessmentPlans', t.planId);
-    const score = t.finalScore || t.supervisorTotalScore;
+    const rawScore = t.finalScore != null ? t.finalScore : t.supervisorTotalScore;
+    const score = rawScore != null ? rawScore : 0;
     const isPercent = plan && plan.scoreMode === 'percentage';
     // 等级制下不根据得分自动默认等级，仅显示已评定的等级（未评定时显示“-”）
     const grade = t.finalGrade || null;
@@ -2088,25 +2089,30 @@ const Admin = (function () {
     const gradeCell = isPercent
       ? `<span class="font-bold" style="${coeff >= 1 ? 'color:var(--success);' : 'color:var(--danger);'}">${coeff.toFixed(2)}</span>`
       : (grade ? `<span class="grade-display grade-${grade}" style="font-size:14px;">${grade}</span>` : '-');
-    const isCalibrated = t.status === 'calibrated' || t.status === 'completed';
-    const statusCell = isCalibrated
-      ? '<span class="tag tag-green">已校准</span>'
-      : '<span class="tag tag-orange">待校准</span>';
+    // 考核进度：显示真实流程状态（便于查看谁已到校准节点、谁还在前序环节）
+    const statusCell = `<span class="status-tag ${App.getTaskStatusClass(t.status)}">${App.getTaskStatusText(t.status)}</span>`;
     const hasConcurrent = t.concurrentWeight > 0;
+    // 已进入校准流程节点（上级评价完成及之后）才可校准；否则按钮置灰不可点
+    const canCalibrate = ['supervisor_done', 'calibrated', 'completed'].includes(t.status);
+    const calibBtn = canCalibrate
+      ? `<button class="btn btn-sm btn-primary" onclick="Admin.calibrateTask('${t.id}')">校准</button>`
+      : `<button class="btn btn-sm btn-primary" disabled style="opacity:.45;cursor:not-allowed;">校准</button>`;
     return `<tr>
       <td>${emp ? emp.empNo : '-'}</td>
       <td class="font-semibold">${emp ? emp.name : '-'}${hasConcurrent ? ' <span class="tag tag-purple" style="font-size:11px;">兼任</span>' : ''}</td>
       <td>${dept ? dept.name : '-'}</td>
       <td>${plan ? plan.name : '-'}</td>
       <td>${t.cycle || '-'}</td>
-      <td>${t.selfTotalScore ? t.selfTotalScore.toFixed(2) : '-'}</td>
-      <td>${t.supervisorTotalScore ? t.supervisorTotalScore.toFixed(2) : '-'}</td>
-      <td class="font-bold text-primary">${score.toFixed(2)}</td>
+      <td>${t.selfTotalScore != null ? t.selfTotalScore.toFixed(2) : '-'}</td>
+      <td>${t.supervisorTotalScore != null ? t.supervisorTotalScore.toFixed(2) : '-'}</td>
+      <td class="font-bold text-primary">${rawScore != null ? rawScore.toFixed(2) : '-'}</td>
       <td>${gradeCell}</td>
       <td>${statusCell}</td>
-      <td><button class="btn btn-sm btn-primary" onclick="Admin.calibrateTask('${t.id}')">校准</button></td>
+      <td>${calibBtn}</td>
     </tr>`;
   }
+
+  let _calibSortDir = null; // 绩效校准列表排序状态：null=默认(按方案/周期分组), 'desc'=当前得分高到低, 'asc'=低到高
 
   function renderCalibrationGroups(tasks) {
     if (tasks.length === 0) {
@@ -2137,14 +2143,21 @@ const Admin = (function () {
           <span style="color:var(--text-tertiary); font-weight:400; font-size:12px;">（${cycles.length} 个周期）</span>
         </div>
         ${cycles.map(cycle => {
-          const cycleTasks = groups[planId][cycle];
+          let cycleTasks = groups[planId][cycle];
+          if (_calibSortDir) {
+            cycleTasks = [...cycleTasks].sort((a, b) => {
+              const sa = (a.finalScore != null ? a.finalScore : (a.supervisorTotalScore || 0));
+              const sb = (b.finalScore != null ? b.finalScore : (b.supervisorTotalScore || 0));
+              return _calibSortDir === 'desc' ? sb - sa : sa - sb;
+            });
+          }
           return `<div style="padding-left:0;">
             <div style="padding:6px 16px; font-size:13px; font-weight:500; color:var(--text-secondary); background:var(--bg-card-hover, #fafafa); border-bottom:1px solid var(--border-color);">
               🗓️ ${cycle} <span style="font-weight:400; font-size:12px; color:var(--text-tertiary);">（${cycleTasks.length} 人）</span>
             </div>
             <table class="data-table" style="margin:0;">
               <thead>
-                <tr><th>工号</th><th>姓名</th><th>部门</th><th>考核方案</th><th>考核周期</th><th>自评得分</th><th>上级评分</th><th>当前得分</th><th>${plan && plan.scoreMode === 'percentage' ? '绩效系数' : '当前等级'}</th><th>校准状态</th><th>操作</th></tr>
+                <tr><th>工号</th><th>姓名</th><th>部门</th><th>考核方案</th><th>考核周期</th><th>自评得分</th><th>上级评分</th><th>当前得分</th><th>${plan && plan.scoreMode === 'percentage' ? '绩效系数' : '当前等级'}</th><th>考核进度</th><th>操作</th></tr>
               </thead>
               <tbody>${cycleTasks.map(t => renderCalibrationRow(t)).join('')}</tbody>
             </table>
@@ -2156,7 +2169,9 @@ const Admin = (function () {
 
   function renderCalibration(container) {
     const plans = DB.getAll('assessmentPlans').filter(p => p.status === 'active' || p.status === 'completed');
-    const tasks = DB.getAll('assessmentTasks').filter(t => ['supervisor_done', 'calibrated', 'completed'].includes(t.status));
+    // 显示所有正在进行的考核任务（不限状态），便于查看谁需要考核及考核进度
+    const validPlanIds = new Set(plans.map(p => p.id));
+    const tasks = DB.getAll('assessmentTasks').filter(t => validPlanIds.has(t.planId));
 
     container.innerHTML = `
       <div class="flex justify-between mb-4">
@@ -2187,6 +2202,11 @@ const Admin = (function () {
               <option value="done">已校准</option>
             </select>
           </div>
+        </div>
+        <div class="flex items-center">
+          <button class="btn btn-sm ${_calibSortDir ? 'btn-primary' : ''}" onclick="Admin.toggleCalibSort()" title="按当前得分排序">
+            ⇅ 排序${_calibSortDir === 'desc' ? '：得分↓' : (_calibSortDir === 'asc' ? '：得分↑' : '')}
+          </button>
         </div>
       </div>
 
@@ -2239,12 +2259,19 @@ const Admin = (function () {
     const planIds = Array.from(planCbs).map(cb => cb.value);
     const cycles = Array.from(cycleCbs).map(cb => cb.value);
     const statusFilter = statusEl ? statusEl.value : 'all';
-    let tasks = DB.getAll('assessmentTasks').filter(t => ['supervisor_done', 'calibrated', 'completed'].includes(t.status));
+    // 基准列表：所有正在进行的考核任务（不限状态）
+    const validPlanIds = new Set(DB.getAll('assessmentPlans').filter(p => p.status === 'active' || p.status === 'completed').map(p => p.id));
+    let tasks = DB.getAll('assessmentTasks').filter(t => validPlanIds.has(t.planId));
     if (planIds.length > 0) tasks = tasks.filter(t => planIds.includes(t.planId));
     if (cycles.length > 0) tasks = tasks.filter(t => cycles.includes(t.cycle));
     if (statusFilter === 'pending') tasks = tasks.filter(t => t.status === 'supervisor_done');
     if (statusFilter === 'done') tasks = tasks.filter(t => t.status === 'calibrated' || t.status === 'completed');
     document.getElementById('calibListArea').innerHTML = renderCalibrationGroups(tasks);
+  }
+
+  function toggleCalibSort() {
+    _calibSortDir = _calibSortDir === null ? 'desc' : (_calibSortDir === 'desc' ? 'asc' : null);
+    filterCalibration();
   }
 
   function calibrateTask(taskId) {
@@ -3768,6 +3795,7 @@ const Admin = (function () {
     toggleMultiSelect,
     onMultiSelectChange,
     filterCalibration,
+    toggleCalibSort,
     onCalibScoreChange,
     saveCalibration,
     onStatsMultiSelectChange,
