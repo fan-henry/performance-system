@@ -1841,8 +1841,9 @@ const Admin = (function () {
     const finalScore = task.finalScore || task.supervisorTotalScore || 0;
 
     let finalGrade = task.finalGrade;
-    let finalCoefficient = task.finalCoefficient;
 
+    // 先算出内部系数（融合前）
+    let finalCoefficient;
     if (plan.scoreMode === 'percentage') {
       finalCoefficient = App.calcCoefficient(finalScore);
     } else {
@@ -1850,15 +1851,35 @@ const Admin = (function () {
       finalGrade = grade ? grade.grade : 'C';
       finalCoefficient = grade ? grade.coefficient : 1.0;
     }
+    const internalCoefficient = finalCoefficient;
 
-    App.confirm(`确认完成该员工的考核？最终得分：${finalScore.toFixed(2)}，${plan.scoreMode === 'percentage' ? '系数：' + finalCoefficient : '等级：' + finalGrade}`, () => {
-      DB.update('assessmentTasks', taskId, {
+    // 外部评价融合：最终系数 = 内部系数×(1−占比) + 外部系数×占比
+    const extW = task.externalWeight != null ? Number(task.externalWeight) : 0;
+    const externalCoeff = task.externalCoeff != null ? Number(task.externalCoeff) : null;
+    let blendedInfo = '';
+    if (extW > 0 && externalCoeff != null) {
+      finalCoefficient = Math.round((finalCoefficient * (1 - extW) + externalCoeff * extW) * 1000) / 1000;
+      blendedInfo = `（含外部评价${Math.round(extW * 100)}%：内部 ${internalCoefficient} → 外部 ${externalCoeff}）`;
+    }
+
+    const detail = plan.scoreMode === 'percentage'
+      ? `系数：${finalCoefficient}${blendedInfo}`
+      : `等级：${finalGrade}${blendedInfo}`;
+    App.confirm(`确认完成该员工的考核？最终得分：${finalScore.toFixed(2)}，${detail}`, () => {
+      const upd = {
         status: 'completed',
         finalScore,
         finalGrade,
         finalCoefficient,
-      });
-      DB.log(App.currentUser.name, '考核完成', `确认完成考核：${App.getEmployeeName(task.employeeId)}，得分${finalScore.toFixed(2)}`);
+      };
+      // 仅在确有外部评价时记录内部/外部明细，便于追溯与统计
+      if (extW > 0 && externalCoeff != null) {
+        upd.internalCoefficient = internalCoefficient;
+        upd.externalCoeff = externalCoeff;
+        upd.externalWeight = extW;
+      }
+      DB.update('assessmentTasks', taskId, upd);
+      DB.log(App.currentUser.name, '考核完成', `确认完成考核：${App.getEmployeeName(task.employeeId)}，得分${finalScore.toFixed(2)}，系数${finalCoefficient}${blendedInfo}`);
       App.toast('考核已完成', 'success');
       renderTaskManagement(document.getElementById('contentArea'));
     });
@@ -2092,14 +2113,21 @@ const Admin = (function () {
     // 考核进度：显示真实流程状态（便于查看谁已到校准节点、谁还在前序环节）
     const statusCell = `<span class="status-tag ${App.getTaskStatusClass(t.status)}">${App.getTaskStatusText(t.status)}</span>`;
     const hasConcurrent = t.concurrentWeight > 0;
+    // 外单位评价标记：已设置占比且系数时才显示
+    const hasExternal = t.externalWeight != null && Number(t.externalWeight) > 0 && t.externalCoeff != null;
+    const extTag = hasExternal
+      ? ` <span class="tag tag-orange" style="font-size:11px;" title="${(t.externalNote || '').replace(/"/g, '&quot;')}">含外部${Math.round(Number(t.externalWeight) * 100)}%</span>`
+      : '';
     // 已进入校准流程节点（上级评价完成及之后）才可校准；否则按钮置灰不可点
     const canCalibrate = ['supervisor_done', 'calibrated', 'completed'].includes(t.status);
     const calibBtn = canCalibrate
       ? `<button class="btn btn-sm btn-primary" onclick="Admin.calibrateTask('${t.id}')">校准</button>`
       : `<button class="btn btn-sm btn-primary" disabled style="opacity:.45;cursor:not-allowed;">校准</button>`;
+    // 外部评价：不依赖考核节点，随时可维护（外单位领导不登录系统，由HR/管理员代填）
+    const extBtn = `<button class="btn btn-sm" onclick="Admin.editExternalEval('${t.id}')" title="维护外单位领导评价系数">外部评价</button>`;
     return `<tr>
       <td>${emp ? emp.empNo : '-'}</td>
-      <td class="font-semibold">${emp ? emp.name : '-'}${hasConcurrent ? ' <span class="tag tag-purple" style="font-size:11px;">兼任</span>' : ''}</td>
+      <td class="font-semibold">${emp ? emp.name : '-'}${hasConcurrent ? ' <span class="tag tag-purple" style="font-size:11px;">兼任</span>' : ''}${extTag}</td>
       <td>${dept ? dept.name : '-'}</td>
       <td>${plan ? plan.name : '-'}</td>
       <td>${t.cycle || '-'}</td>
@@ -2108,8 +2136,65 @@ const Admin = (function () {
       <td class="font-bold text-primary">${rawScore != null ? rawScore.toFixed(2) : '-'}</td>
       <td>${gradeCell}</td>
       <td>${statusCell}</td>
-      <td>${calibBtn}</td>
+      <td>${extBtn} ${calibBtn}</td>
     </tr>`;
+  }
+
+  // 外部评价维护弹窗（任务面板，随时可改；外单位领导不登录系统）
+  function editExternalEval(taskId) {
+    const task = DB.getById('assessmentTasks', taskId);
+    if (!task) return;
+    const w = task.externalWeight != null ? Number(task.externalWeight) * 100 : 30;
+    const c = task.externalCoeff != null ? Number(task.externalCoeff) : '';
+    const note = task.externalNote || '';
+    const html = `
+      <div class="alert alert-info">为不登录系统的外单位领导维护评价系数。最终系数 = 内部系数 ×(1−占比) + 外部系数 ×占比。</div>
+      <div class="form-group">
+        <label class="form-label">外单位评价系数</label>
+        <input class="form-input" id="extCoeff" type="number" step="0.01" value="${c}" placeholder="如 1.1">
+      </div>
+      <div class="form-group">
+        <label class="form-label">外单位占比（%）</label>
+        <input class="form-input" id="extWeight" type="number" step="1" min="0" max="100" value="${w}">
+        <span class="text-sm text-tertiary">占该员工最终系数的权重，0 表示不参与融合</span>
+      </div>
+      <div class="form-group">
+        <label class="form-label">备注（选填）</label>
+        <textarea class="form-textarea" id="extNote" rows="2" placeholder="外单位评价人 / 日期等">${note}</textarea>
+      </div>
+    `;
+    App.showModal('外部评价维护', html, `
+      <button class="btn" onclick="App.closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="Admin.saveExternalEval('${taskId}')">保存</button>
+    `);
+  }
+
+  function saveExternalEval(taskId) {
+    const coeffEl = document.getElementById('extCoeff');
+    const weightEl = document.getElementById('extWeight');
+    const noteEl = document.getElementById('extNote');
+    const coeffRaw = coeffEl.value.trim();
+    const weightPct = parseFloat(weightEl.value);
+    if (isNaN(weightPct) || weightPct < 0 || weightPct > 100) {
+      App.toast('占比须为 0~100 的数字', 'error'); return;
+    }
+    let coeff = null;
+    if (coeffRaw !== '') {
+      coeff = parseFloat(coeffRaw);
+      if (isNaN(coeff)) { App.toast('系数须为数字', 'error'); return; }
+    }
+    const weight = weightPct / 100;
+    const upd = { externalWeight: weight, externalNote: noteEl.value.trim(), externalCoeff: coeff };
+    DB.update('assessmentTasks', taskId, upd);
+    App.closeModal();
+    App.toast('外部评价已保存', 'success');
+    // 重新渲染当前所在页面（外部评价按钮仅出现在绩效校准列表）
+    const area = document.getElementById('contentArea');
+    if (area && document.getElementById('calibListArea')) {
+      renderCalibration(area);
+    } else if (area && typeof renderTaskManagement === 'function') {
+      renderTaskManagement(area);
+    }
   }
 
   let _calibSortDir = null; // 绩效校准列表排序状态：null=默认(按方案/周期分组), 'desc'=当前得分高到低, 'asc'=低到高
@@ -2629,12 +2714,12 @@ const Admin = (function () {
     const rows = [];
 
     // 列索引常量
-    const C = { seq:0, empNo:1, name:2, dept:3, position:4, indicator:5, weight:6, target:7, actual:8, rate:9, desc:10, self:11, sup:12, calib:13, finalScore:14, coeff:15 };
-    // 需要按人员进行纵向合并的列：工号、姓名、部门、职务、最终得分、绩效系数
+    const C = { seq:0, empNo:1, name:2, dept:3, position:4, indicator:5, weight:6, target:7, actual:8, rate:9, desc:10, self:11, sup:12, calib:13, finalScore:14, coeff:15, internalCoeff:16, extCoeff:17, extWeight:18 };
+    // 需要按人员进行纵向合并的列：工号、姓名、部门、职务、最终得分、绩效系数（新增的外部评价列在 coeff 之后，不影响合并）
     const MERGE_COLS = [C.empNo, C.name, C.dept, C.position, C.finalScore, C.coeff];
 
     // 标题行
-    rows.push(['序号', '工号', '姓名', '部门', '职务', '指标项', '权重', '目标值', '实际值', '完成率', '完成情况描述', '自评分', '上级分', '校准分', '最终得分', '绩效系数']);
+    rows.push(['序号', '工号', '姓名', '部门', '职务', '指标项', '权重', '目标值', '实际值', '完成率', '完成情况描述', '自评分', '上级分', '校准分', '最终得分', '绩效系数', '内部系数', '外部系数', '外部占比']);
 
     const merges = [];   // 单元格合并信息
     let seq = 1;
@@ -2642,6 +2727,13 @@ const Admin = (function () {
       const emp = DB.getById('employees', t.employeeId);
       const finalScore = t.finalScore || t.supervisorTotalScore || t.selfTotalScore || '';
       const coeff = t.finalCoefficient != null ? t.finalCoefficient : (finalScore ? (finalScore / 100).toFixed(2) : '');
+      // 外部评价展示值：有外部占比且系数时才输出，否则内部系数=最终系数
+      const _w = t.externalWeight != null ? Number(t.externalWeight) : 0;
+      const _ec = t.externalCoeff != null ? Number(t.externalCoeff) : null;
+      const _hasExt = _w > 0 && _ec != null;
+      const internalCoeffVal = _hasExt ? (t.internalCoefficient != null ? t.internalCoefficient : coeff) : coeff;
+      const extCoeffVal = _hasExt ? _ec : '';
+      const extWeightVal = _hasExt ? Math.round(_w * 100) + '%' : '';
       // 完成情况描述：优先取 ind.description（自评页填写的“完成情况描述”），其次 ind.completionDesc
       const getDesc = (ind) => (ind.description != null && String(ind.description).trim() !== '' ? ind.description : (ind.completionDesc || ''));
 
@@ -2670,7 +2762,10 @@ const Admin = (function () {
               ind.supervisorScore || '',
               ind.calibratedScore || '',
               finalScore,
-              coeff
+              coeff,
+              internalCoeffVal,
+              extCoeffVal,
+              extWeightVal
             ]);
           } else {
             // 后续指标行：人员信息留空（合并后由首行统一展示）
@@ -2690,7 +2785,10 @@ const Admin = (function () {
               ind.supervisorScore || '',
               ind.calibratedScore || '',
               null,  // 最终得分留空
-              null   // 绩效系数留空
+              null,  // 绩效系数留空
+              null,  // 内部系数留空
+              null,  // 外部系数留空
+              null   // 外部占比留空
             ]);
           }
         });
@@ -2712,7 +2810,10 @@ const Admin = (function () {
           t.supervisorTotalScore || '',
           t.finalScore || '',
           finalScore,
-          coeff
+          coeff,
+          internalCoeffVal,
+          extCoeffVal,
+          extWeightVal
         ]);
       }
 
@@ -2755,7 +2856,10 @@ const Admin = (function () {
       {wch:10},  // 上级分
       {wch:10},  // 校准分
       {wch:10},  // 最终得分
-      {wch:10}   // 绩效系数
+      {wch:10},  // 绩效系数
+      {wch:10},  // 内部系数
+      {wch:10},  // 外部系数
+      {wch:10}   // 外部占比
     ];
 
     XLSX.utils.book_append_sheet(wb, ws, '结果统计');
@@ -3797,6 +3901,8 @@ const Admin = (function () {
     filterCalibration,
     toggleCalibSort,
     onCalibScoreChange,
+    editExternalEval,
+    saveExternalEval,
     saveCalibration,
     onStatsMultiSelectChange,
     exportStats,
