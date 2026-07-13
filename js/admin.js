@@ -930,7 +930,7 @@ const Admin = (function () {
   }
 
   function savePermissionMatrix() {
-    var perms = {};
+    var perms = { _updatedAt: Date.now() };
     document.querySelectorAll('#permMatrixTable input[type="checkbox"]').forEach(function(cb) {
       var mod = cb.dataset.module;
       var role = cb.dataset.role;
@@ -939,7 +939,11 @@ const Admin = (function () {
     });
     DB.setSetting('rolePermissions', perms);
     DB.log(App.currentUser.name, '权限配置', '更新页面权限矩阵');
-    App.toast('权限配置已保存，重新登录后生效', 'success');
+    // 保存后立即重渲染导航，无需重新登录
+    if (typeof App.renderApp === 'function') {
+      App.renderApp();
+    }
+    App.toast('权限配置已保存', 'success');
   }
 
   // ========== 指标库管理 ==========
