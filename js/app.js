@@ -270,6 +270,7 @@ const App = (function () {
         { key: 'admin-calibration', label: '绩效校准', icon: '⚖️', badge: getCalibrationPending() },
         { key: 'admin-stats', label: '结果统计与分析', icon: '📈' },
         { key: 'admin-config', label: '系统配置', icon: '⚙️' },
+        { key: 'self-eval', label: '绩效自评', icon: '✏️', badge: getPendingSelfEvalCount() },
         { key: 'emp-home', label: '我的绩效', icon: '👤' },
       ].filter(m => hasPermission(m.key));
     } else if (currentUser.role === 'sysadmin') {
@@ -279,6 +280,7 @@ const App = (function () {
         { key: 'admin-org', label: '组织与人员管理', icon: '🏢' },
         { key: 'admin-config', label: '系统配置', icon: '⚙️' },
         { key: 'admin-stats', label: '结果统计与分析', icon: '📈' },
+        { key: 'self-eval', label: '绩效自评', icon: '✏️', badge: getPendingSelfEvalCount() },
         { key: 'emp-home', label: '我的绩效', icon: '👤' },
       ].filter(m => hasPermission(m.key));
     } else if (currentUser.role === 'admin') {
@@ -287,6 +289,7 @@ const App = (function () {
         { key: 'admin-home', label: '工作台', icon: '🏠' },
         { key: 'supervisor-eval', label: '上级评价', icon: '⭐', badge: getSupervisorPending() },
         { key: 'admin-calibration', label: '绩效校准', icon: '⚖️', badge: getCalibrationPending() },
+        { key: 'self-eval', label: '绩效自评', icon: '✏️', badge: getPendingSelfEvalCount() },
         { key: 'emp-home', label: '我的绩效', icon: '👤' },
       ].filter(m => hasPermission(m.key));
     }
