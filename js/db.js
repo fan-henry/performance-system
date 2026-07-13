@@ -197,7 +197,20 @@ const DB = (function () {
           if (!result.settings) result.settings = {};
           for (var k in cloud.settings) {
             if (k === '_deleted') continue; // _deleted 由 mergeDeleted 处理
-            result.settings[k] = cloud.settings[k]; // cloud 优先（含 _cleanEpoch）
+            // rolePermissions 等用户配置项：按 _updatedAt 时间戳合并，新的胜出；无时间戳则本地优先
+            if (k === 'rolePermissions') {
+              var localRP = local && local.settings && local.settings[k];
+              var cloudRP = cloud.settings[k];
+              var localTime = localRP && localRP._updatedAt ? localRP._updatedAt : 0;
+              var cloudTime = cloudRP && cloudRP._updatedAt ? cloudRP._updatedAt : 0;
+              if (cloudTime > localTime) {
+                result.settings[k] = JSON.parse(JSON.stringify(cloudRP));
+              } else {
+                result.settings[k] = JSON.parse(JSON.stringify(localRP || cloudRP));
+              }
+            } else {
+              result.settings[k] = cloud.settings[k]; // cloud 优先（含 _cleanEpoch）
+            }
           }
         }
         continue;
