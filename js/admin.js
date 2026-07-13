@@ -2739,7 +2739,7 @@ const Admin = (function () {
     const html = `
       <div class="alert alert-info">通过企业微信群机器人 Webhook 发送。请先在目标群「添加群机器人」获取 Webhook 地址。</div>
       <div class="form-group">
-        <label class="form-label">Webhook 地址（可修改，发送时自动保存）</label>
+        <label class="form-label">Webhook 地址（修改后点「保存地址」即可，无需发送）</label>
         <input class="form-input" id="wecomHook" type="text" value="${hookUrl}" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxxxx">
       </div>
       <div class="form-group">
@@ -2750,6 +2750,7 @@ const Admin = (function () {
     `;
     App.showModal('发送消息到企微群', html, `
       <button class="btn" onclick="App.closeModal()">取消</button>
+      <button class="btn" onclick="Admin.saveWecomHook()">💾 保存地址</button>
       <button class="btn btn-primary" onclick="Admin.sendWecomMessage()">发送</button>
     `);
   }
@@ -2780,6 +2781,19 @@ const Admin = (function () {
     }).catch(function(e) {
       App.toast('发送失败：' + (e && e.message ? e.message : '网络错误'), 'error');
     });
+  }
+
+  // 仅保存 Webhook 地址，不发送消息（弹窗内独立保存）
+  function saveWecomHook() {
+    const hookEl = document.getElementById('wecomHook');
+    if (!hookEl) return;
+    const url = (hookEl.value || '').trim();
+    if (!url) { App.toast('地址为空，未保存', 'error'); return; }
+    if (!/^https?:\/\/.+/i.test(url)) {
+      App.toast('Webhook 地址格式不正确（需以 http:// 或 https:// 开头）', 'error'); return;
+    }
+    DB.setSetting('wecomWebhook', { url: url, _updatedAt: Date.now() });
+    App.toast('Webhook 地址已保存', 'success');
   }
 
   // CSV导出（直接从任务数据读取，支持分组结构）
@@ -3999,6 +4013,7 @@ const Admin = (function () {
     onStatsMultiSelectChange,
     openWecomSend,
     sendWecomMessage,
+    saveWecomHook,
     exportStats,
     printStats,
     saveStatsField,
