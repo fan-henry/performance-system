@@ -197,8 +197,8 @@ const DB = (function () {
           if (!result.settings) result.settings = {};
           for (var k in cloud.settings) {
             if (k === '_deleted') continue; // _deleted 由 mergeDeleted 处理
-            // rolePermissions 等用户配置项：按 _updatedAt 时间戳合并，新的胜出；无时间戳则本地优先
-            if (k === 'rolePermissions') {
+            // rolePermissions / wecomWebhook 等用户配置项：按 _updatedAt 时间戳合并，新的胜出；无时间戳则本地优先
+            if (k === 'rolePermissions' || k === 'wecomWebhook') {
               var localRP = local && local.settings && local.settings[k];
               var cloudRP = cloud.settings[k];
               var localTime = localRP && localRP._updatedAt ? localRP._updatedAt : 0;
