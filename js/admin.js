@@ -2585,6 +2585,11 @@ const Admin = (function () {
     const stInfo = ALL_STATUS_MAP[t.status] || { text: t.status, tag: 'tag-gray' };
     const renDanChouCoef = t.renDanChouCoef != null ? t.renDanChouCoef : '';
     const remark = t.remark || '';
+    // 外部占比 100% 时，绩效系数以外部评价系数为准（与绩效校准列表同步）
+    let displayCoeff = t.finalCoefficient;
+    if (isPercent && displayCoeff == null && t.externalWeight != null && Math.abs(Number(t.externalWeight) - 1) < 1e-9 && t.externalCoeff != null) {
+      displayCoeff = Number(t.externalCoeff);
+    }
     return `<tr>
       <td>${seq}</td>
       <td>${emp ? emp.empNo : '-'}</td>
@@ -2592,7 +2597,7 @@ const Admin = (function () {
       <td>${dept ? dept.name : '-'}</td>
       <td>${t.finalScore || t.supervisorTotalScore ? score.toFixed(2) : '-'}</td>
       <td>${isPercent
-        ? (t.finalCoefficient != null ? t.finalCoefficient : '-')
+        ? (displayCoeff != null ? displayCoeff : '-')
         : (t.finalGrade ? `<span class="grade-display grade-${t.finalGrade}" style="font-size:14px;">${t.finalGrade}</span>` : '-')
       }</td>
       <td><input type="text" class="form-input" style="width:80px; padding:2px 6px; font-size:13px; text-align:center;" value="${renDanChouCoef}" placeholder="—" onchange="Admin.saveStatsField('${t.id}','renDanChouCoef',this.value)" /></td>
