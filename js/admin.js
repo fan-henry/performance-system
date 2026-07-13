@@ -2108,9 +2108,13 @@ const Admin = (function () {
     const rawScore = t.finalScore != null ? t.finalScore : t.supervisorTotalScore;
     const score = rawScore != null ? rawScore : 0;
     const isPercent = plan && plan.scoreMode === 'percentage';
+    // 当外部评价占比为 100% 时，直接以外部系数作为绩效系数显示（同步到绩效校准列表）
+    let coeff = App.calcCoefficient(score);
+    if (isPercent && t.externalWeight != null && Math.abs(Number(t.externalWeight) - 1) < 1e-9 && t.externalCoeff != null) {
+      coeff = Number(t.externalCoeff);
+    }
     // 等级制下不根据得分自动默认等级，仅显示已评定的等级（未评定时显示“-”）
     const grade = t.finalGrade || null;
-    const coeff = App.calcCoefficient(score);
     const gradeCell = isPercent
       ? `<span class="font-bold" style="${coeff >= 1 ? 'color:var(--success);' : 'color:var(--danger);'}">${coeff.toFixed(2)}</span>`
       : (grade ? `<span class="grade-display grade-${grade}" style="font-size:14px;">${grade}</span>` : '-');
