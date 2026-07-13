@@ -2560,7 +2560,8 @@ const Admin = (function () {
         </div>
         <div class="flex items-end gap-2">
           <button class="btn" onclick="Admin.exportStats()">📥 导出</button>
-          <button class="btn btn-primary" onclick="Admin.printStats()">🖨️ 打印</button>
+          <button class="btn" onclick="Admin.printStats()">🖨️ 打印</button>
+          <button class="btn btn-primary" onclick="Admin.openWecomSend()">📨 发送企微群</button>
         </div>
       </div>
 
@@ -2692,6 +2693,93 @@ const Admin = (function () {
       trigger.textContent = `已选 ${checked.length} 项`;
     }
     renderStatsResult();
+  }
+
+  // ========== 发送结果到企业微信群（群机器人 Webhook） ==========
+  // 读取当前筛选后的任务（与统计列表筛选条件保持一致）
+  function getFilteredStatsTasks() {
+    const planCbs = document.querySelectorAll('#statsPlanDropdown input[type="checkbox"]:checked');
+    const cycleCbs = document.querySelectorAll('#statsCycleDropdown input[type="checkbox"]:checked');
+    const statusCbs = document.querySelectorAll('#statsStatusDropdown input[type="checkbox"]:checked');
+    const planIds = Array.from(planCbs).map(cb => cb.value);
+    const cycleVals = Array.from(cycleCbs).map(cb => cb.value);
+    const statusVals = Array.from(statusCbs).map(cb => cb.value);
+    let tasks = getEvaluatedTasks();
+    if (planIds.length > 0) tasks = tasks.filter(t => planIds.includes(t.planId));
+    if (cycleVals.length > 0) tasks = tasks.filter(t => cycleVals.includes(t.cycle));
+    if (statusVals.length > 0) tasks = tasks.filter(t => statusVals.includes(t.status));
+    return tasks;
+  }
+
+  // 根据当前筛选结果生成默认播报文案（企业微信 markdown 语法）
+  function buildWecomSummary(tasks) {
+    const scores = tasks.map(t => t.finalScore || t.supervisorTotalScore || 0).filter(s => s > 0);
+    const avg = scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+    const max = scores.length ? Math.max(...scores) : 0;
+    const min = scores.length ? Math.min(...scores) : 0;
+    const cycles = [...new Set(tasks.map(t => t.cycle).filter(Boolean))];
+    const cycleText = cycles.length ? cycles.join('、') : '本期';
+    const completed = tasks.filter(t => t.status === 'completed').length;
+    return [
+      `## 绩效结果播报`,
+      `> 考核周期：**${cycleText}**`,
+      `> 参与人数：**${tasks.length} 人**　已完成：**${completed} 人**`,
+      `> 平均得分：**${avg.toFixed(2)}**`,
+      `> 最高分：**${max.toFixed(2)}**　最低分：**${min.toFixed(2)}**`,
+      ``,
+      `请相关同事登录系统查看个人绩效详情。`
+    ].join('\n');
+  }
+
+  // 打开"发送企微群"弹窗：顶部配置 Webhook 地址（可修改），下方为消息内容框
+  function openWecomSend() {
+    const tasks = getFilteredStatsTasks();
+    const saved = DB.getSetting('wecomWebhook');
+    const hookUrl = (saved && saved.url) ? saved.url : (typeof saved === 'string' ? saved : '');
+    const html = `
+      <div class="alert alert-info">通过企业微信群机器人 Webhook 发送。请先在目标群「添加群机器人」获取 Webhook 地址。</div>
+      <div class="form-group">
+        <label class="form-label">Webhook 地址（可修改，发送时自动保存）</label>
+        <input class="form-input" id="wecomHook" type="text" value="${hookUrl}" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxxxx">
+      </div>
+      <div class="form-group">
+        <label class="form-label">消息内容（支持 markdown 语法，请手工填写）</label>
+        <textarea class="form-textarea" id="wecomMsg" rows="9" placeholder="在此输入要发送到群的消息内容..." style="font-family:var(--font-mono,monospace); font-size:13px; line-height:1.6;"></textarea>
+        <span class="text-sm text-tertiary">留空将无法发送，请填写内容后发送。</span>
+      </div>
+    `;
+    App.showModal('发送消息到企微群', html, `
+      <button class="btn" onclick="App.closeModal()">取消</button>
+      <button class="btn btn-primary" onclick="Admin.sendWecomMessage()">发送</button>
+    `);
+  }
+
+  function sendWecomMessage() {
+    const hookEl = document.getElementById('wecomHook');
+    const msgEl = document.getElementById('wecomMsg');
+    if (!hookEl || !msgEl) return;
+    const url = (hookEl.value || '').trim();
+    const content = (msgEl.value || '').trim();
+    if (!url) { App.toast('请填写 Webhook 地址', 'error'); return; }
+    if (!/^https?:\/\/.+/i.test(url)) {
+      App.toast('Webhook 地址格式不正确（需以 http:// 或 https:// 开头）', 'error'); return;
+    }
+    if (!content) { App.toast('消息内容不能为空', 'error'); return; }
+    // 保存 Webhook（带时间戳，跨云端合并时新的胜出）
+    DB.setSetting('wecomWebhook', { url: url, _updatedAt: Date.now() });
+    const payload = { msgtype: 'markdown', markdown: { content: content } };
+    // 企业微信 Webhook 无 CORS 响应头：用 no-cors + text/plain 盲发（跳过预检，读不到返回体）
+    fetch(url, {
+      method: 'POST',
+      mode: 'no-cors',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify(payload)
+    }).then(function() {
+      App.closeModal();
+      App.toast('已发送，请到企业微信群确认', 'success');
+    }).catch(function(e) {
+      App.toast('发送失败：' + (e && e.message ? e.message : '网络错误'), 'error');
+    });
   }
 
   // CSV导出（直接从任务数据读取，支持分组结构）
@@ -3909,6 +3997,8 @@ const Admin = (function () {
     saveExternalEval,
     saveCalibration,
     onStatsMultiSelectChange,
+    openWecomSend,
+    sendWecomMessage,
     exportStats,
     printStats,
     saveStatsField,
