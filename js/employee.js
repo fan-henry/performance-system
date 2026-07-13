@@ -70,6 +70,13 @@ const Employee = (function () {
                 <button class="btn btn-primary" onclick="Employee.confirmPlan('${task.id}')">确认考核计划</button>
               </div>
             ` : ''}
+            ${['confirmed','pending_self_eval','self_evaluated','hr_reviewing','hr_reviewed'].includes(task.status) ? `
+              <div class="flex gap-2 mt-3">
+                <button class="btn btn-primary" onclick="Employee.startSelfEval('${task.id}')">
+                  ${['self_evaluated','hr_reviewing','hr_reviewed'].includes(task.status) ? '查看自评' : '开始自评'}
+                </button>
+              </div>
+            ` : ''}
           </div>
         </div>`;
       }).join('');
