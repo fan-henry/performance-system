@@ -99,8 +99,23 @@ const App = (function () {
 
   // Check if a page is allowed for the current role based on permission matrix
   function hasPermission(pageKey) {
+    // 默认权限（与权限矩阵页面默认值保持一致）
+    var defaultPerms = {
+      'home': { employee: true, supervisor: true, hr: true, sysadmin: true, admin: true },
+      'indicator': { employee: true, supervisor: true, hr: false, sysadmin: false, admin: false },
+      'self-eval': { employee: true, supervisor: true, hr: true, sysadmin: true, admin: true },
+      'result': { employee: true, supervisor: true, hr: true, sysadmin: true, admin: true },
+      'print': { employee: true, supervisor: true, hr: true, sysadmin: true, admin: true },
+      'org': { employee: false, supervisor: false, hr: true, sysadmin: true, admin: true },
+      'indicators-lib': { employee: false, supervisor: false, hr: true, sysadmin: false, admin: true },
+      'plans': { employee: false, supervisor: false, hr: true, sysadmin: false, admin: true },
+      'tasks': { employee: false, supervisor: true, hr: true, sysadmin: false, admin: true },
+      'calibration': { employee: false, supervisor: false, hr: true, sysadmin: false, admin: true },
+      'stats': { employee: false, supervisor: true, hr: true, sysadmin: true, admin: true },
+      'config': { employee: false, supervisor: false, hr: false, sysadmin: true, admin: true },
+      'supervisor-eval': { employee: false, supervisor: true, hr: false, sysadmin: false, admin: false },
+    };
     var savedPerms = DB.getSetting('rolePermissions');
-    if (!savedPerms) return true; // No custom permissions, use defaults
     var role = currentUser.role;
     // Map page keys to module keys
     var keyMap = {
@@ -120,10 +135,17 @@ const App = (function () {
     };
     var modKey = keyMap[pageKey];
     if (!modKey) return true; // Unknown pages are allowed by default
-    if (savedPerms[modKey] && savedPerms[modKey][role] !== undefined) {
+
+    // 已保存自定义权限：严格按配置判断，缺失默认拒绝
+    if (savedPerms && savedPerms[modKey] && savedPerms[modKey][role] !== undefined) {
       return savedPerms[modKey][role];
     }
-    return true; // Default: allow
+    // 未保存自定义权限：使用默认权限兜底
+    if (!savedPerms) {
+      return defaultPerms[modKey] ? !!defaultPerms[modKey][role] : false;
+    }
+    // 已启用自定义权限，但该模块/角色未配置：默认拒绝
+    return false;
   }
 
   // ========== 前台布局（员工端） ==========
@@ -701,7 +723,7 @@ const App = (function () {
   }
 
   return {
-    init, login, logout, navigate, handleLogin,
+    init, login, logout, navigate, handleLogin, renderApp,
     closeModal, confirm, confirmCallback, toast,
     get currentUser() { return currentUser; },
     getDeptName, getPositionName, getEmployeeName, getIndicatorName, getIndicator,
