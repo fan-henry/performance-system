@@ -3046,6 +3046,10 @@ const Admin = (function () {
             const dept = emp ? DB.getById('departments', emp.deptId) : null;
             const pos = emp ? DB.getById('positions', emp.positionId) : null;
             const coef = t.finalCoefficient != null ? t.finalCoefficient : '-';
+            let _coefDisplay = coef;
+            if (_coefDisplay === '-' && t.externalWeight != null && Math.abs(Number(t.externalWeight) - 1) < 1e-9 && t.externalCoeff != null) {
+              _coefDisplay = Number(t.externalCoeff);
+            }
             const renDanChouCoef = t.renDanChouCoef != null ? t.renDanChouCoef : '';
             const remark = t.remark || '';
             return `<tr>
@@ -3054,7 +3058,7 @@ const Admin = (function () {
               <td style="padding:3px 5px; border:1px solid #000; width:10%; font-size:9pt;">${emp ? emp.empNo : '-'}</td>
               <td style="padding:3px 5px; border:1px solid #000; width:10%; text-align:left; font-size:9pt;">${emp ? emp.name : '-'}</td>
               <td style="padding:3px 5px; border:1px solid #000; width:12%; text-align:left; font-size:9pt;">${pos ? pos.name : '-'}</td>
-              <td style="padding:3px 5px; border:1px solid #000; width:10%; font-size:9pt;">${coef}</td>
+              <td style="padding:3px 5px; border:1px solid #000; width:10%; font-size:9pt;">${_coefDisplay}</td>
               <td style="padding:3px 5px; border:1px solid #000; width:10%; font-size:9pt;">${renDanChouCoef}</td>
               <td style="padding:3px 5px; border:1px solid #000; width:12%; font-size:9pt; text-align:left;">${remark}</td>
             </tr>`;
@@ -3174,7 +3178,7 @@ const Admin = (function () {
         ${isPercent ? `
           <div class="flex-1 p-4" style="background: #f9f0ff; border-radius: 8px;">
             <div class="text-sm text-tertiary">考核系数</div>
-            <div class="score-display" style="font-size:28px; font-weight:700; color: #722ed1;">${task.finalCoefficient != null ? task.finalCoefficient : '-'}</div>
+            <div class="score-display" style="font-size:28px; font-weight:700; color: #722ed1;">${task.finalCoefficient != null ? task.finalCoefficient : (isPercent && task.externalWeight != null && Math.abs(Number(task.externalWeight) - 1) < 1e-9 && task.externalCoeff != null ? Number(task.externalCoeff) : '-')}</div>
           </div>
         ` : `
           <div class="flex-1 p-4" style="background: #f9f0ff; border-radius: 8px;">
