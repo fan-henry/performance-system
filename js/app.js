@@ -510,6 +510,18 @@ const App = (function () {
     return Math.round((totalScore / 100) * 100) / 100;
   }
 
+  // 计算融合外部评价后的绩效系数（任务未确认完成时可实时预览）
+  function calcBlendedCoefficient(task, score) {
+    const internalCoeff = calcCoefficient(score);
+    const extWeight = task && task.externalWeight != null ? Number(task.externalWeight) : 0;
+    const extCoeff = task && task.externalCoeff != null ? Number(task.externalCoeff) : null;
+    if (extWeight > 0 && extCoeff != null) {
+      if (Math.abs(extWeight - 1) < 1e-9) return extCoeff;
+      return Math.round((internalCoeff * (1 - extWeight) + extCoeff * extWeight) * 100) / 100;
+    }
+    return internalCoeff;
+  }
+
   // 根据分数获取等级
   function getGrade(score, plan) {
     if (!plan || !plan.gradeRules) return null;
@@ -736,7 +748,7 @@ const App = (function () {
     get currentUser() { return currentUser; },
     getDeptName, getPositionName, getEmployeeName, getIndicatorName, getIndicator,
     buildDeptTree, calcCompletionRate, calcIndicatorScore, calcTotalScore,
-    calcCoefficient, getGrade, getTaskStatusText, getTaskStatusClass,
+    calcCoefficient, calcBlendedCoefficient, getGrade, getTaskStatusText, getTaskStatusClass,
     getMyTasks, getSubordinates, getHRReviewPending, showModal, formatDate, getCurrentCycle,
     hasPermission,
     toggleUserMenu,
