@@ -1419,6 +1419,7 @@ const Employee = (function () {
           </table>
           ${task.supervisorComment ? `<p style="margin:6px 0; font-size:12px;"><strong>上级评价：</strong>${task.supervisorComment}</p>` : ''}
           ${task.hrComment ? `<p style="margin:6px 0; font-size:12px;"><strong>HR评价：</strong>${task.hrComment}</p>` : ''}
+          ${task.calibReason ? `<p style="margin:6px 0; font-size:12px;"><strong>绩效校准原因：</strong>${task.calibReason}</p>` : ''}
           <div style="margin-top:32px; font-size:12px;">
             <p>员工签字：___________________</p>
             <p style="color:#999; margin-top:6px;">日期：____年____月____日</p>
