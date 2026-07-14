@@ -522,10 +522,12 @@ const App = (function () {
     return internalCoeff;
   }
 
-  // 根据分数获取等级
+  // 根据分数获取等级（仅在有 minScore 配置时生效；新等级规则已不配置 minScore，改由人工选择）
   function getGrade(score, plan) {
     if (!plan || !plan.gradeRules) return null;
-    const rules = [...plan.gradeRules].sort((a, b) => b.minScore - a.minScore);
+    const rules = plan.gradeRules.filter(r => r.minScore != null);
+    if (rules.length === 0) return null;
+    rules.sort((a, b) => b.minScore - a.minScore);
     for (const rule of rules) {
       if (score >= rule.minScore) return rule;
     }
