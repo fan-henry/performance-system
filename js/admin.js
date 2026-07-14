@@ -2102,11 +2102,25 @@ const Admin = (function () {
     });
   }
 
+  // 判断任务是否为"总经理角色且已 HR 审核但尚未上级评价"（需自动跳过上级评价）
+  function isGMReviewed(t) {
+    const emp = DB.getById('employees', t.employeeId);
+    return emp && emp.role === 'admin' && t.status === 'hr_reviewed';
+  }
+
+  // 获取当前得分（兼容总经理角色 HR 审核后自动跳过上级评价的特例）
+  function getCurrentScoreForDisplay(t) {
+    if (t.finalScore != null) return t.finalScore;
+    if (t.supervisorTotalScore != null) return t.supervisorTotalScore;
+    if (isGMReviewed(t) && t.selfTotalScore != null) return t.selfTotalScore;
+    return null;
+  }
+
   function renderCalibrationRow(t) {
     const emp = DB.getById('employees', t.employeeId);
     const dept = emp ? DB.getById('departments', emp.deptId) : null;
     const plan = DB.getById('assessmentPlans', t.planId);
-    const rawScore = t.finalScore != null ? t.finalScore : t.supervisorTotalScore;
+    const rawScore = getCurrentScoreForDisplay(t);
     const score = rawScore != null ? rawScore : 0;
     const isPercent = plan && plan.scoreMode === 'percentage';
     // 融合外部评价后的绩效系数（未确认完成时实时计算）
@@ -2124,8 +2138,8 @@ const Admin = (function () {
     const extTag = hasExternal
       ? ` <span class="tag tag-orange" style="font-size:11px;" title="${(t.externalNote || '').replace(/"/g, '&quot;')}">含外部${Math.round(Number(t.externalWeight) * 100)}%</span>`
       : '';
-    // 已进入校准流程节点（上级评价完成及之后）才可校准；否则按钮置灰不可点
-    const canCalibrate = ['supervisor_done', 'calibrated', 'completed'].includes(t.status);
+    // 已进入校准流程节点（上级评价完成及之后）才可校准；总经理角色 HR 审核后也可校准
+    const canCalibrate = ['supervisor_done', 'calibrated', 'completed'].includes(t.status) || isGMReviewed(t);
     const calibBtn = canCalibrate
       ? `<button class="btn btn-sm btn-primary" onclick="Admin.calibrateTask('${t.id}')">校准</button>`
       : `<button class="btn btn-sm btn-primary" disabled style="opacity:.45;cursor:not-allowed;">校准</button>`;
@@ -2237,8 +2251,8 @@ const Admin = (function () {
           let cycleTasks = groups[planId][cycle];
           if (_calibSortDir) {
             cycleTasks = [...cycleTasks].sort((a, b) => {
-              const sa = (a.finalScore != null ? a.finalScore : (a.supervisorTotalScore || 0));
-              const sb = (b.finalScore != null ? b.finalScore : (b.supervisorTotalScore || 0));
+              const sa = getCurrentScoreForDisplay(a) != null ? getCurrentScoreForDisplay(a) : 0;
+              const sb = getCurrentScoreForDisplay(b) != null ? getCurrentScoreForDisplay(b) : 0;
               return _calibSortDir === 'desc' ? sb - sa : sa - sb;
             });
           }
@@ -2355,7 +2369,7 @@ const Admin = (function () {
     let tasks = DB.getAll('assessmentTasks').filter(t => validPlanIds.has(t.planId));
     if (planIds.length > 0) tasks = tasks.filter(t => planIds.includes(t.planId));
     if (cycles.length > 0) tasks = tasks.filter(t => cycles.includes(t.cycle));
-    if (statusFilter === 'pending') tasks = tasks.filter(t => t.status === 'supervisor_done');
+    if (statusFilter === 'pending') tasks = tasks.filter(t => t.status === 'supervisor_done' || isGMReviewed(t));
     if (statusFilter === 'done') tasks = tasks.filter(t => t.status === 'calibrated' || t.status === 'completed');
     document.getElementById('calibListArea').innerHTML = renderCalibrationGroups(tasks);
   }
@@ -2366,9 +2380,19 @@ const Admin = (function () {
   }
 
   function calibrateTask(taskId) {
-    const task = DB.getById('assessmentTasks', taskId);
+    let task = DB.getById('assessmentTasks', taskId);
+    if (!task) return;
     const plan = DB.getById('assessmentPlans', task.planId);
     const emp = DB.getById('employees', task.employeeId);
+    // 总经理角色 HR 审核后自动跳过上级评价：点击校准时先同步自评得分作为当前得分
+    if (isGMReviewed(task)) {
+      DB.update('assessmentTasks', taskId, {
+        status: 'supervisor_done',
+        supervisorTotalScore: task.selfTotalScore,
+        supervisorComment: '总经理角色自动跳过上级评价，自评得分作为当前得分',
+      });
+      task = DB.getById('assessmentTasks', taskId);
+    }
     const currentScore = task.finalScore || task.supervisorTotalScore || 0;
     const isPercent = plan && plan.scoreMode === 'percentage';
     const hasConcurrent = task.concurrentWeight > 0 && task.indicators.some(i => i.positionType === 'concurrent');
@@ -2579,7 +2603,8 @@ const Admin = (function () {
     const emp = DB.getById('employees', t.employeeId);
     const dept = emp ? DB.getById('departments', emp.deptId) : null;
     const plan = DB.getById('assessmentPlans', t.planId);
-    const score = t.finalScore || t.supervisorTotalScore || 0;
+    const rawScore = getCurrentScoreForDisplay(t);
+    const score = rawScore != null ? rawScore : 0;
     const isPercent = plan && plan.scoreMode === 'percentage';
     const stInfo = ALL_STATUS_MAP[t.status] || { text: t.status, tag: 'tag-gray' };
     const renDanChouCoef = t.renDanChouCoef != null ? t.renDanChouCoef : '';
@@ -2594,7 +2619,7 @@ const Admin = (function () {
       <td>${emp ? emp.empNo : '-'}</td>
       <td class="font-semibold">${emp ? emp.name : '-'}</td>
       <td>${dept ? dept.name : '-'}</td>
-      <td>${t.finalScore || t.supervisorTotalScore ? score.toFixed(2) : '-'}</td>
+      <td>${rawScore != null ? score.toFixed(2) : '-'}</td>
       <td>${isPercent
         ? (displayCoeff != null ? displayCoeff : '-')
         : (t.finalGrade ? `<span class="grade-display grade-${t.finalGrade}" style="font-size:14px;">${t.finalGrade}</span>` : '-')
@@ -3046,8 +3071,9 @@ const Admin = (function () {
             const pos = emp ? DB.getById('positions', emp.positionId) : null;
             const coef = t.finalCoefficient != null ? t.finalCoefficient : '-';
             let _coefDisplay = coef;
+            const rawScoreForPrint = getCurrentScoreForDisplay(t);
             if (_coefDisplay === '-' && t.externalWeight != null && Number(t.externalWeight) > 0 && t.externalCoeff != null) {
-              _coefDisplay = App.calcBlendedCoefficient(t, t.finalScore || t.supervisorTotalScore || 0);
+              _coefDisplay = App.calcBlendedCoefficient(t, rawScoreForPrint != null ? rawScoreForPrint : 0);
             }
             const renDanChouCoef = t.renDanChouCoef != null ? t.renDanChouCoef : '';
             const remark = t.remark || '';
@@ -3141,6 +3167,9 @@ const Admin = (function () {
 
     let html = '';
 
+    const rawScoreForDetail = getCurrentScoreForDisplay(task);
+    const detailScore = rawScoreForDetail != null ? rawScoreForDetail : 0;
+
     // 基本信息
     html += `
       <table class="data-table mb-4">
@@ -3164,7 +3193,7 @@ const Admin = (function () {
       <div class="flex gap-4 mb-4">
         <div class="flex-1 p-4" style="background: var(--primary-bg); border-radius: 8px;">
           <div class="text-sm text-tertiary">最终得分${hasConcurrent ? '（加权）' : ''}</div>
-          <div class="score-display" style="font-size:28px; font-weight:700; color:var(--primary);">${(task.finalScore || task.supervisorTotalScore || 0).toFixed(2)}<span class="unit" style="font-size:14px;">分</span></div>
+          <div class="score-display" style="font-size:28px; font-weight:700; color:var(--primary);">${detailScore.toFixed(2)}<span class="unit" style="font-size:14px;">分</span></div>
         </div>
         <div class="flex-1 p-4" style="background: var(--success-bg); border-radius: 8px;">
           <div class="text-sm text-tertiary">自评总分</div>
@@ -3177,7 +3206,7 @@ const Admin = (function () {
         ${isPercent ? `
           <div class="flex-1 p-4" style="background: #f9f0ff; border-radius: 8px;">
             <div class="text-sm text-tertiary">考核系数</div>
-            <div class="score-display" style="font-size:28px; font-weight:700; color: #722ed1;">${task.finalCoefficient != null ? task.finalCoefficient : (isPercent && task.externalWeight != null && Number(task.externalWeight) > 0 && task.externalCoeff != null ? App.calcBlendedCoefficient(task, task.finalScore || task.supervisorTotalScore || 0) : '-')}</div>
+            <div class="score-display" style="font-size:28px; font-weight:700; color: #722ed1;">${task.finalCoefficient != null ? task.finalCoefficient : (isPercent && task.externalWeight != null && Number(task.externalWeight) > 0 && task.externalCoeff != null ? App.calcBlendedCoefficient(task, rawScoreForDetail != null ? rawScoreForDetail : 0) : '-')}</div>
           </div>
         ` : `
           <div class="flex-1 p-4" style="background: #f9f0ff; border-radius: 8px;">
