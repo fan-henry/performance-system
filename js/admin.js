@@ -2108,11 +2108,8 @@ const Admin = (function () {
     const rawScore = t.finalScore != null ? t.finalScore : t.supervisorTotalScore;
     const score = rawScore != null ? rawScore : 0;
     const isPercent = plan && plan.scoreMode === 'percentage';
-    // 当外部评价占比为 100% 时，直接以外部系数作为绩效系数显示（同步到绩效校准列表）
-    let coeff = App.calcCoefficient(score);
-    if (isPercent && t.externalWeight != null && Math.abs(Number(t.externalWeight) - 1) < 1e-9 && t.externalCoeff != null) {
-      coeff = Number(t.externalCoeff);
-    }
+    // 融合外部评价后的绩效系数（未确认完成时实时计算）
+    const coeff = App.calcBlendedCoefficient(t, score);
     // 等级制下不根据得分自动默认等级，仅显示已评定的等级（未评定时显示“-”）
     const grade = t.finalGrade || null;
     const gradeCell = isPercent
@@ -2380,8 +2377,8 @@ const Admin = (function () {
     const gradeSection = isPercent ? `
         <div class="form-group">
           <label class="form-label">绩效系数</label>
-          <input type="text" id="calibCoeffDisplay" class="form-input" value="${App.calcCoefficient(currentScore).toFixed(2)}" readonly style="background:var(--bg-page);color:var(--text-tertiary);">
-          <div class="form-hint">系数 = 得分 ÷ 100，随得分联动</div>
+          <input type="text" id="calibCoeffDisplay" class="form-input" value="${App.calcBlendedCoefficient(task, currentScore).toFixed(2)}" readonly style="background:var(--bg-page);color:var(--text-tertiary);">
+          <div class="form-hint">已按得分÷100算出内部系数，并融合外部评价权重</div>
         </div>` : `
         <div class="form-group">
           <label class="form-label">调整后等级<span class="required">*</span></label>
@@ -2585,10 +2582,10 @@ const Admin = (function () {
     const stInfo = ALL_STATUS_MAP[t.status] || { text: t.status, tag: 'tag-gray' };
     const renDanChouCoef = t.renDanChouCoef != null ? t.renDanChouCoef : '';
     const remark = t.remark || '';
-    // 外部占比 100% 时，绩效系数以外部评价系数为准（与绩效校准列表同步）
+    // 未确认完成时，按内部系数与外部评价权重实时计算融合系数
     let displayCoeff = t.finalCoefficient;
-    if (isPercent && displayCoeff == null && t.externalWeight != null && Math.abs(Number(t.externalWeight) - 1) < 1e-9 && t.externalCoeff != null) {
-      displayCoeff = Number(t.externalCoeff);
+    if (isPercent && displayCoeff == null && t.externalWeight != null && Number(t.externalWeight) > 0 && t.externalCoeff != null) {
+      displayCoeff = App.calcBlendedCoefficient(t, score);
     }
     return `<tr>
       <td>${seq}</td>
@@ -3047,8 +3044,8 @@ const Admin = (function () {
             const pos = emp ? DB.getById('positions', emp.positionId) : null;
             const coef = t.finalCoefficient != null ? t.finalCoefficient : '-';
             let _coefDisplay = coef;
-            if (_coefDisplay === '-' && t.externalWeight != null && Math.abs(Number(t.externalWeight) - 1) < 1e-9 && t.externalCoeff != null) {
-              _coefDisplay = Number(t.externalCoeff);
+            if (_coefDisplay === '-' && t.externalWeight != null && Number(t.externalWeight) > 0 && t.externalCoeff != null) {
+              _coefDisplay = App.calcBlendedCoefficient(t, t.finalScore || t.supervisorTotalScore || 0);
             }
             const renDanChouCoef = t.renDanChouCoef != null ? t.renDanChouCoef : '';
             const remark = t.remark || '';
@@ -3178,7 +3175,7 @@ const Admin = (function () {
         ${isPercent ? `
           <div class="flex-1 p-4" style="background: #f9f0ff; border-radius: 8px;">
             <div class="text-sm text-tertiary">考核系数</div>
-            <div class="score-display" style="font-size:28px; font-weight:700; color: #722ed1;">${task.finalCoefficient != null ? task.finalCoefficient : (isPercent && task.externalWeight != null && Math.abs(Number(task.externalWeight) - 1) < 1e-9 && task.externalCoeff != null ? Number(task.externalCoeff) : '-')}</div>
+            <div class="score-display" style="font-size:28px; font-weight:700; color: #722ed1;">${task.finalCoefficient != null ? task.finalCoefficient : (isPercent && task.externalWeight != null && Number(task.externalWeight) > 0 && task.externalCoeff != null ? App.calcBlendedCoefficient(task, task.finalScore || task.supervisorTotalScore || 0) : '-')}</div>
           </div>
         ` : `
           <div class="flex-1 p-4" style="background: #f9f0ff; border-radius: 8px;">
