@@ -2425,8 +2425,8 @@ const Admin = (function () {
         </div>
         ${gradeSection}
         <div class="form-group">
-          <label class="form-label">校准原因<span class="required">*</span></label>
-          <textarea class="form-textarea" name="reason" required placeholder="请说明校准原因"></textarea>
+          <label class="form-label">校准原因</label>
+          <textarea class="form-textarea" name="reason" placeholder="选填，说明本次校准调整的依据（如：综合平衡、强制分布等）">${task.calibReason || ''}</textarea>
         </div>
         <div class="form-group">
           <label class="form-label">HR评价备注</label>
@@ -2447,7 +2447,7 @@ const Admin = (function () {
     const reason = form.reason.value.trim();
     const hrComment = form.hrComment.value.trim();
 
-    if (!adjustedScore || !reason) { App.toast('请填写必填项', 'error'); return; }
+    if (!adjustedScore) { App.toast('请填写调整后得分', 'error'); return; }
 
     const task = DB.getById('assessmentTasks', taskId);
     const plan = DB.getById('assessmentPlans', task.planId);
@@ -2483,6 +2483,7 @@ const Admin = (function () {
       calibrated: true,
       status: 'calibrated',
       hrComment,
+      calibReason: reason,
     });
 
     const gradeLog = isPercent ? `系数 ${beforeCoeff.toFixed(2)}→${afterCoeff.toFixed(2)}` : `${beforeGrade}→${adjustedGrade}`;
@@ -3280,6 +3281,9 @@ const Admin = (function () {
     }
     if (task.hrComment) {
       html += `<div class="alert alert-success mb-2"><strong>💬 HR审核意见：</strong>${task.hrComment}</div>`;
+    }
+    if (task.calibReason) {
+      html += `<div class="alert alert-warning mb-2"><strong>🔧 绩效校准原因：</strong>${task.calibReason}</div>`;
     }
     if (task.returnReason) {
       html += `<div class="alert alert-warning mb-2"><strong>↩️ 退回原因：</strong>${task.returnReason}</div>`;
