@@ -1320,20 +1320,19 @@ const Admin = (function () {
         <div id="gradeRulesSection">
           <h4 class="font-semibold mb-2">等级规则配置</h4>
         <table class="data-table mb-4">
-          <thead><tr><th>等级</th><th>含义</th><th>最低分</th><th>系数</th><th>占比上限(%)</th></tr></thead>
+          <thead><tr><th>等级</th><th>含义</th><th>系数</th><th>占比上限(%)</th></tr></thead>
           <tbody id="gradeRulesBody">
             ${(plan ? plan.gradeRules : [
-              { grade: 'A', label: '卓越', minScore: 110, coefficient: 1.2 },
-              { grade: 'B', label: '优秀', minScore: 100, coefficient: 1.1 },
-              { grade: 'C', label: '合格', minScore: 90, coefficient: 1.0 },
-              { grade: 'D', label: '待改进', minScore: 80, coefficient: 0.9 },
-              { grade: 'E', label: '不合格', minScore: 0, coefficient: 0.8 },
+              { grade: 'A', label: '卓越', coefficient: 1.2 },
+              { grade: 'B', label: '优秀', coefficient: 1.1 },
+              { grade: 'C', label: '合格', coefficient: 1.0 },
+              { grade: 'D', label: '待改进', coefficient: 0.9 },
+              { grade: 'E', label: '不合格', coefficient: 0.8 },
             ]).map((r, i) => {
               const limit = plan && plan.distributionLimit ? plan.distributionLimit[r.grade] : '';
               return `<tr>
                 <td><span class="grade-display grade-${r.grade}" style="font-size:16px;">${r.grade}</span></td>
                 <td><input type="text" class="form-input" value="${r.label}" style="width:100px;"></td>
-                <td><input type="number" class="form-input" value="${r.minScore}" style="width:80px;"></td>
                 <td><input type="number" class="form-input" value="${r.coefficient}" step="0.1" style="width:80px;"></td>
                 <td><input type="number" class="form-input" value="${limit}" style="width:80px;"></td>
               </tr>`;
@@ -1393,10 +1392,9 @@ const Admin = (function () {
       data.gradeRules.push({
         grade,
         label: inputs[0].value,
-        minScore: parseInt(inputs[1].value) || 0,
-        coefficient: parseFloat(inputs[2].value) || 1.0,
+        coefficient: parseFloat(inputs[1].value) || 1.0,
       });
-      if (inputs[3].value) data.distributionLimit[grade] = parseInt(inputs[3].value);
+      if (inputs[2].value) data.distributionLimit[grade] = parseInt(inputs[2].value);
     });
 
     if (!data.name) { App.toast('请输入方案名称', 'error'); return; }
@@ -2409,7 +2407,7 @@ const Admin = (function () {
           <label class="form-label">调整后等级<span class="required">*</span></label>
           <select class="form-select" name="adjustedGrade">
             ${!task.finalGrade ? `<option value="" disabled ${currentGrade === '' ? 'selected' : ''}>— 请选择等级 —</option>` : ''}
-            ${plan.gradeRules.map(r => `<option value="${r.grade}" ${currentGrade === r.grade ? 'selected' : ''}>${r.grade} - ${r.label}（≥${r.minScore}分，系数${r.coefficient}）</option>`).join('')}
+            ${plan.gradeRules.map(r => `<option value="${r.grade}" ${currentGrade === r.grade ? 'selected' : ''}>${r.grade} - ${r.label}（系数${r.coefficient}）</option>`).join('')}
           </select>
           <div class="form-hint">请人工选择等级（不按得分自动默认）</div>
         </div>`;
