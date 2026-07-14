@@ -1091,7 +1091,7 @@ const Employee = (function () {
                       <td class="font-bold text-primary">${t.finalScore ? t.finalScore.toFixed(2) : (t.supervisorTotalScore ? t.supervisorTotalScore.toFixed(2) : '-')}</td>
                       <td>
                         ${t.finalGrade ? `<span class="grade-display grade-${t.finalGrade}" style="font-size: 18px;">${t.finalGrade}</span>` : '-'}
-                        ${t.finalCoefficient ? `<span class="text-sm">(${t.finalCoefficient})</span>` : ''}
+                        ${plan && plan.scoreMode === 'percentage' ? `<span class="text-sm">(${App.calcBlendedCoefficient(t, t.finalScore || t.supervisorTotalScore || 0).toFixed(2)})</span>` : ''}
                       </td>
                       <td><span class="status-tag ${App.getTaskStatusClass(t.status)}">${App.getTaskStatusText(t.status)}</span></td>
                       <td>
@@ -1157,7 +1157,7 @@ const Employee = (function () {
         ${plan.scoreMode === 'percentage' ? `
           <div class="flex-1 p-4" style="background: var(--success-bg); border-radius: 8px;">
             <div class="text-sm text-tertiary">考核系数</div>
-            <div class="score-display text-success">${task.finalCoefficient || App.calcCoefficient(task.finalScore || task.supervisorTotalScore || 0)}</div>
+            <div class="score-display text-success">${App.calcBlendedCoefficient(task, task.finalScore || task.supervisorTotalScore || 0).toFixed(2)}</div>
           </div>
         ` : `
           <div class="flex-1 p-4" style="background: var(--success-bg); border-radius: 8px;">
@@ -1414,7 +1414,7 @@ const Employee = (function () {
               <td style="padding:4px 6px; border:1px solid #ddd; background:#f0f7ff; width:20%;">最终得分</td>
               <td style="padding:4px 6px; border:1px solid #ddd; font-weight:bold;">${task.finalScore ? task.finalScore.toFixed(2) : (task.supervisorTotalScore ? task.supervisorTotalScore.toFixed(2) : '-')} 分</td>
               <td style="padding:4px 6px; border:1px solid #ddd; background:#f0f7ff; width:20%;">绩效${plan.scoreMode === 'percentage' ? '系数' : '等级'}</td>
-              <td style="padding:4px 6px; border:1px solid #ddd; font-weight:bold;">${plan.scoreMode === 'percentage' ? (task.finalCoefficient || '-') : (task.finalGrade || '-')}</td>
+              <td style="padding:4px 6px; border:1px solid #ddd; font-weight:bold;">${plan.scoreMode === 'percentage' ? App.calcBlendedCoefficient(task, task.finalScore || task.supervisorTotalScore || 0).toFixed(2) : (task.finalGrade || '-')}</td>
             </tr>
           </table>
           ${task.supervisorComment ? `<p style="margin:6px 0; font-size:12px;"><strong>上级评价：</strong>${task.supervisorComment}</p>` : ''}
