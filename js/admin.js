@@ -3693,14 +3693,35 @@ const Admin = (function () {
     const task = DB.getById('assessmentTasks', taskId);
     if (!task || !['self_evaluated', 'hr_reviewing'].includes(task.status)) return;
 
-    App.confirm('确认审核通过？审核通过后该任务将流转至上级评价环节。', () => {
+    const emp = DB.getById('employees', task.employeeId);
+    const isGM = emp && emp.role === 'admin';
+    const confirmMsg = isGM
+      ? '确认审核通过？该员工为总经理角色，审核通过后将自动跳过上级评价并进入校准环节，自评得分将作为当前得分。'
+      : '确认审核通过？审核通过后该任务将流转至上级评价环节。';
+
+    App.confirm(confirmMsg, () => {
       // 先静默保存当前调整
       saveHRReview(taskId, true);
-      DB.update('assessmentTasks', taskId, { status: 'hr_reviewed' });
-      DB.log(App.currentUser.name, 'HR审核', `审核通过 ${App.getEmployeeName(task.employeeId)} 的自评`);
-      App.closeModal();
-      App.toast('HR审核通过，已流转至上级评价！', 'success');
-      renderHRReview(document.getElementById('contentArea'));
+      const updatedTask = DB.getById('assessmentTasks', taskId);
+
+      if (isGM) {
+        // 总经理角色：无直属上级，HR审核通过后直接跳过上级评价，进入校准环节
+        DB.update('assessmentTasks', taskId, {
+          status: 'supervisor_done',
+          supervisorTotalScore: updatedTask.selfTotalScore,
+          supervisorComment: '总经理角色自动跳过上级评价，自评得分作为当前得分',
+        });
+        DB.log(App.currentUser.name, 'HR审核', `审核通过 ${App.getEmployeeName(task.employeeId)} 的自评（总经理角色，自动进入校准环节）`);
+        App.closeModal();
+        App.toast('HR审核通过，总经理角色已自动进入校准环节！', 'success');
+        renderCalibration(document.getElementById('contentArea'));
+      } else {
+        DB.update('assessmentTasks', taskId, { status: 'hr_reviewed' });
+        DB.log(App.currentUser.name, 'HR审核', `审核通过 ${App.getEmployeeName(task.employeeId)} 的自评`);
+        App.closeModal();
+        App.toast('HR审核通过，已流转至上级评价！', 'success');
+        renderHRReview(document.getElementById('contentArea'));
+      }
     });
   }
 
