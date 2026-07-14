@@ -1506,7 +1506,8 @@ const Admin = (function () {
         <td>${t.finalGrade ? `<span class="grade-display grade-${t.finalGrade}" style="font-size:14px;">${t.finalGrade}</span>` : '-'} ${t.finalCoefficient ? '(' + t.finalCoefficient + ')' : ''}</td>
         <td>
           <button class="btn btn-sm btn-link" onclick="Admin.viewTask('${t.id}')">详情</button>
-          ${t.status === 'supervisor_done' ? `<button class="btn btn-sm btn-link text-success" onclick="Admin.completeTask('${t.id}')">确认完成</button>` : ''}
+          ${t.status === 'supervisor_done' && !(emp && emp.role === 'admin') ? `<button class="btn btn-sm btn-link text-success" onclick="Admin.completeTask('${t.id}')">确认完成</button>` : ''}
+          ${t.status === 'calibrated' ? `<button class="btn btn-sm btn-link text-success" onclick="Admin.completeTask('${t.id}')">确认完成</button>` : ''}
           ${t.status !== 'pending_confirm' ? `<button class="btn btn-sm btn-link text-danger" onclick="Admin.returnTask('${t.id}')">退回</button>` : ''}
           <button class="btn btn-sm btn-link text-danger" onclick="Admin.deleteTask('${t.id}')">删除</button>
         </td>
