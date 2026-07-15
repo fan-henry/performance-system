@@ -2123,10 +2123,15 @@ const Admin = (function () {
     const isPercent = plan && plan.scoreMode === 'percentage';
     // 融合外部评价后的绩效系数（未确认完成时实时计算）
     const coeff = App.calcBlendedCoefficient(t, score);
-    // 等级制下不根据得分自动默认等级，仅显示已评定的等级（未评定时显示“-”）
+    // 等级制下不根据得分自动默认等级，仅显示已评定的等级；同时显示等级对应的系数数值
     const grade = t.finalGrade || null;
-    const gradeCell = isPercent
-      ? `<span class="font-bold" style="${coeff >= 1 ? 'color:var(--success);' : 'color:var(--danger);'}">${coeff.toFixed(2)}</span>`
+    let coeffDisplay = isPercent ? coeff : null;
+    if (!isPercent && grade && plan && plan.gradeRules) {
+      const rule = plan.gradeRules.find(r => r.grade === grade);
+      if (rule && rule.coefficient != null) coeffDisplay = Number(rule.coefficient);
+    }
+    const gradeCell = coeffDisplay != null
+      ? `<span class="font-bold" style="${coeffDisplay >= 1 ? 'color:var(--success);' : 'color:var(--danger);'}">${coeffDisplay.toFixed(2)}</span>`
       : (grade ? `<span class="grade-display grade-${grade}" style="font-size:14px;">${grade}</span>` : '-');
     // 考核进度：显示真实流程状态（便于查看谁已到校准节点、谁还在前序环节）
     const statusCell = `<span class="status-tag ${App.getTaskStatusClass(t.status)}">${App.getTaskStatusText(t.status)}</span>`;
@@ -2612,10 +2617,22 @@ const Admin = (function () {
     const stInfo = ALL_STATUS_MAP[t.status] || { text: t.status, tag: 'tag-gray' };
     const renDanChouCoef = t.renDanChouCoef != null ? t.renDanChouCoef : '';
     const remark = t.remark || '';
-    // 百分制下按当前得分实时融合外部评价权重计算绩效系数，与绩效校准页保持一致
+    // 绩效系数：百分制下融合外部评价；等级制下显示等级对应的系数数值
     let displayCoeff = null;
-    if (isPercent && rawScore != null) {
-      displayCoeff = App.calcBlendedCoefficient(t, score);
+    if (isPercent) {
+      const extWeight = t.externalWeight != null ? Number(t.externalWeight) : 0;
+      const extCoeff = t.externalCoeff != null ? Number(t.externalCoeff) : null;
+      if (Math.abs(extWeight - 1) < 1e-9 && extCoeff != null) {
+        displayCoeff = extCoeff;
+      } else if (rawScore != null) {
+        displayCoeff = App.calcBlendedCoefficient(t, score);
+      }
+    } else {
+      const grade = t.finalGrade;
+      if (grade && plan && plan.gradeRules) {
+        const rule = plan.gradeRules.find(r => r.grade === grade);
+        if (rule && rule.coefficient != null) displayCoeff = Number(rule.coefficient);
+      }
     }
     return `<tr>
       <td>${seq}</td>
@@ -2623,8 +2640,8 @@ const Admin = (function () {
       <td class="font-semibold">${emp ? emp.name : '-'}</td>
       <td>${dept ? dept.name : '-'}</td>
       <td>${rawScore != null ? score.toFixed(2) : '-'}</td>
-      <td>${isPercent
-        ? (displayCoeff != null ? displayCoeff : '-')
+      <td>${displayCoeff != null
+        ? displayCoeff.toFixed(2)
         : (t.finalGrade ? `<span class="grade-display grade-${t.finalGrade}" style="font-size:14px;">${t.finalGrade}</span>` : '-')
       }</td>
       <td><input type="text" class="form-input" style="width:80px; padding:2px 6px; font-size:13px; text-align:center;" value="${renDanChouCoef}" placeholder="—" onchange="Admin.saveStatsField('${t.id}','renDanChouCoef',this.value)" /></td>
@@ -2867,8 +2884,26 @@ const Admin = (function () {
     let seq = 1;
     tasks.forEach(t => {
       const emp = DB.getById('employees', t.employeeId);
+      const plan = DB.getById('assessmentPlans', t.planId);
+      const isPercent = plan && plan.scoreMode === 'percentage';
       const finalScore = t.finalScore || t.supervisorTotalScore || t.selfTotalScore || '';
-      const coeff = finalScore ? App.calcBlendedCoefficient(t, finalScore).toFixed(2) : '';
+      // 绩效系数：百分制融合外部评价（外部100%时不依赖内部得分）；等级制显示等级对应系数
+      let coeff = '';
+      if (isPercent) {
+        const _w = t.externalWeight != null ? Number(t.externalWeight) : 0;
+        const _ec = t.externalCoeff != null ? Number(t.externalCoeff) : null;
+        if (Math.abs(_w - 1) < 1e-9 && _ec != null) {
+          coeff = _ec.toFixed(2);
+        } else if (finalScore) {
+          coeff = App.calcBlendedCoefficient(t, finalScore).toFixed(2);
+        }
+      } else {
+        const grade = t.finalGrade;
+        if (grade && plan && plan.gradeRules) {
+          const rule = plan.gradeRules.find(r => r.grade === grade);
+          if (rule && rule.coefficient != null) coeff = Number(rule.coefficient).toFixed(2);
+        }
+      }
       // 外部评价展示值：有外部占比且系数时才输出，否则内部系数=最终系数
       const _w = t.externalWeight != null ? Number(t.externalWeight) : 0;
       const _ec = t.externalCoeff != null ? Number(t.externalCoeff) : null;
@@ -3074,9 +3109,25 @@ const Admin = (function () {
             const pos = emp ? DB.getById('positions', emp.positionId) : null;
             const rawScoreForPrint = getCurrentScoreForDisplay(t);
             const isPercentPrint = plan && plan.scoreMode === 'percentage';
+            // 百分制：外部评价100%时不依赖内部得分，直接取 externalCoeff；否则按当前得分融合外部评价
+            // 等级制：按 finalGrade 查找对应等级的 coefficient 数值
             let _coefDisplay = '-';
-            if (isPercentPrint && rawScoreForPrint != null) {
-              _coefDisplay = App.calcBlendedCoefficient(t, rawScoreForPrint);
+            if (isPercentPrint) {
+              const extWeight = t.externalWeight != null ? Number(t.externalWeight) : 0;
+              const extCoeff = t.externalCoeff != null ? Number(t.externalCoeff) : null;
+              if (Math.abs(extWeight - 1) < 1e-9 && extCoeff != null) {
+                _coefDisplay = extCoeff.toFixed(2);
+              } else if (rawScoreForPrint != null) {
+                _coefDisplay = App.calcBlendedCoefficient(t, rawScoreForPrint).toFixed(2);
+              }
+            } else {
+              const grade = t.finalGrade;
+              if (grade && plan && plan.gradeRules) {
+                const rule = plan.gradeRules.find(r => r.grade === grade);
+                if (rule && rule.coefficient != null) {
+                  _coefDisplay = Number(rule.coefficient).toFixed(2);
+                }
+              }
             }
             const renDanChouCoef = t.renDanChouCoef != null ? t.renDanChouCoef : '';
             const remark = t.remark || '';
