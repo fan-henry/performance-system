@@ -1240,12 +1240,34 @@ const Employee = (function () {
 
   // ========== 绩效打印 ==========
   function renderPrint(container) {
-    const myTasks = App.getMyTasks().filter(t => ['completed', 'calibrated'].includes(t.status) || t.supervisorTotalScore !== null);
+    const isHR = App.currentUser && App.currentUser.role === 'hr';
+    let tasks;
+    if (isHR) {
+      // HR管理角色：可查看并打印全体员工绩效
+      tasks = DB.getAll('assessmentTasks').filter(t => ['completed', 'calibrated'].includes(t.status) || t.supervisorTotalScore !== null);
+    } else {
+      tasks = App.getMyTasks().filter(t => ['completed', 'calibrated'].includes(t.status) || t.supervisorTotalScore !== null);
+    }
+    // 按部门、姓名排序，便于 HR 批量查阅
+    tasks.sort((a, b) => {
+      const ea = DB.getById('employees', a.employeeId) || {};
+      const eb = DB.getById('employees', b.employeeId) || {};
+      const da = (DB.getById('departments', ea.deptId) || {}).name || '';
+      const db = (DB.getById('departments', eb.deptId) || {}).name || '';
+      if (da !== db) return da.localeCompare(db, 'zh');
+      return (ea.name || '').localeCompare(eb.name || '', 'zh');
+    });
+
+    const scoreOf = (t) => t.finalScore != null ? t.finalScore.toFixed(2) : (t.supervisorTotalScore != null ? t.supervisorTotalScore.toFixed(2) : '-');
+
     container.innerHTML = `
       <div class="card">
-        <div class="card-header"><h3>绩效打印</h3></div>
+        <div class="card-header">
+          <h3>${isHR ? '全员绩效打印（HR）' : '绩效打印'}</h3>
+          ${isHR && tasks.length > 0 ? `<button class="btn btn-primary" onclick="Employee.printAll()">🖨️ 打印全部绩效表</button>` : ''}
+        </div>
         <div class="card-body no-pad">
-          ${myTasks.length === 0 ? `
+          ${tasks.length === 0 ? `
             <div class="empty-state"><div class="icon">🖨️</div><p>暂无可打印的绩效表</p></div>
           ` : `
             <table class="data-table">
@@ -1253,19 +1275,23 @@ const Employee = (function () {
                 <tr>
                   <th>考核周期</th>
                   <th>考核方案</th>
+                  ${isHR ? `<th>姓名</th><th>部门</th>` : ''}
                   <th>最终得分</th>
                   <th>等级</th>
                   <th>操作</th>
                 </tr>
               </thead>
               <tbody>
-                ${myTasks.map(t => {
+                ${tasks.map(t => {
                   const plan = DB.getById('assessmentPlans', t.planId);
+                  const emp = isHR ? (DB.getById('employees', t.employeeId) || {}) : null;
+                  const dept = isHR && emp ? (DB.getById('departments', emp.deptId) || {}) : null;
                   return `
                     <tr>
                       <td class="font-semibold">${t.cycle}</td>
                       <td>${plan ? plan.name : '-'}</td>
-                      <td class="font-bold text-primary">${t.finalScore ? t.finalScore.toFixed(2) : (t.supervisorTotalScore ? t.supervisorTotalScore.toFixed(2) : '-')}</td>
+                      ${isHR ? `<td class="font-semibold">${emp.name || '-'}</td><td>${dept.name || '-'}</td>` : ''}
+                      <td class="font-bold text-primary">${scoreOf(t)}</td>
                       <td>${t.finalGrade ? `<span class="grade-display grade-${t.finalGrade}" style="font-size:16px;">${t.finalGrade}</span>` : '-'}</td>
                       <td>
                         <button class="btn btn-sm btn-primary" onclick="Employee.previewPrint('${t.id}')">📋 预览打印</button>
@@ -1281,9 +1307,8 @@ const Employee = (function () {
     `;
   }
 
-  function previewPrint(taskId) {
-    const task = DB.getById('assessmentTasks', taskId);
-    if (!task) return;
+  // 构建单个绩效表打印内容（员工/HR通用）
+  function buildPrintContent(task) {
     const plan = DB.getById('assessmentPlans', task.planId);
     const user = DB.getById('employees', task.employeeId);
     const dept = DB.getById('departments', user.deptId);
@@ -1356,82 +1381,119 @@ const Employee = (function () {
       tbodyRows += `<tr style="font-weight:bold; background:#f5f5f5;"><td colspan="8" style="padding:4px 6px; border:1px solid #ddd; text-align:right;">合计</td><td style="padding:4px 6px; border:1px solid #ddd; text-align:center;">${task.selfTotalScore ? task.selfTotalScore.toFixed(2) : '-'}</td><td style="padding:4px 6px; border:1px solid #ddd; text-align:center;">${task.supervisorTotalScore ? task.supervisorTotalScore.toFixed(2) : '-'}</td><td style="padding:4px 6px; border:1px solid #ddd; text-align:center;">${task.finalScore ? task.finalScore.toFixed(2) : (task.supervisorTotalScore ? task.supervisorTotalScore.toFixed(2) : '-')}</td></tr>`;
     }
 
+    const finalScoreText = task.finalScore != null ? task.finalScore.toFixed(2) : (task.supervisorTotalScore != null ? task.supervisorTotalScore.toFixed(2) : '-');
+    const coefText = plan.scoreMode === 'percentage' ? App.calcBlendedCoefficient(task, task.finalScore || task.supervisorTotalScore || 0).toFixed(2) : (task.finalGrade || '-');
+    const scoreLabel = plan.scoreMode === 'percentage' ? '系数' : '等级';
+
+    return `
+      <div id="printContent" style="background:#fff; padding:24px; border:1px solid var(--border); border-radius:8px; font-size:12px; page-break-inside: avoid;">
+        <div style="text-align:center; margin-bottom:16px;">
+          <h1 style="font-size:16px; margin-bottom:4px;">吉麦新能源绩效考核表</h1>
+          <p style="color:#666; font-size:12px;">${plan.name}</p>
+        </div>
+        <table style="width:100%; border-collapse:collapse; margin-bottom:12px; font-size:12px;">
+          <tr>
+            <td style="padding:4px 6px; border:1px solid #ddd; width:12%; background:#f5f5f5;">姓名</td>
+            <td style="padding:4px 6px; border:1px solid #ddd; width:18%;">${user.name}</td>
+            <td style="padding:4px 6px; border:1px solid #ddd; width:12%; background:#f5f5f5;">工号</td>
+            <td style="padding:4px 6px; border:1px solid #ddd; width:18%;">${user.empNo}</td>
+            <td style="padding:4px 6px; border:1px solid #ddd; width:12%; background:#f5f5f5;">部门</td>
+            <td style="padding:4px 6px; border:1px solid #ddd; width:28%;">${dept ? dept.name : '-'}</td>
+          </tr>
+          <tr>
+            <td style="padding:4px 6px; border:1px solid #ddd; background:#f5f5f5;">岗位</td>
+            <td style="padding:4px 6px; border:1px solid #ddd;" colspan="5">
+              ${pos ? pos.name : '-'}${hasConcurrent ? `（本职 ${task.primaryWeight || 100}%）` : ''}
+              ${hasConcurrent ? ` + ${concPos ? concPos.name : ''}（兼任 ${task.concurrentWeight || 0}%）` : ''}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:4px 6px; border:1px solid #ddd; background:#f5f5f5;">考核周期</td>
+            <td style="padding:4px 6px; border:1px solid #ddd;">${task.cycle}</td>
+            <td style="padding:4px 6px; border:1px solid #ddd; background:#f5f5f5;">评分模式</td>
+            <td style="padding:4px 6px; border:1px solid #ddd;" colspan="3">${plan.scoreMode === 'percentage' ? '百分制' : '等级制'}</td>
+          </tr>
+        </table>
+        <table style="width:100%; border-collapse:collapse; margin-bottom:12px; font-size:12px;">
+          <thead>
+            <tr style="background:#f0f7ff;">
+              <th style="padding:4px 6px; border:1px solid #ddd; width:4%;">序号</th>
+              <th style="padding:4px 6px; border:1px solid #ddd; width:7%;">岗位</th>
+              <th style="padding:4px 6px; border:1px solid #ddd; width:16%;">考核指标</th>
+              <th style="padding:4px 6px; border:1px solid #ddd; width:5%;">权重</th>
+              <th style="padding:4px 6px; border:1px solid #ddd; width:8%;">目标值</th>
+              <th style="padding:4px 6px; border:1px solid #ddd; width:8%;">实际值</th>
+              <th style="padding:4px 6px; border:1px solid #ddd; width:6%;">完成率</th>
+              <th style="padding:4px 6px; border:1px solid #ddd; width:16%;">完成情况描述</th>
+              <th style="padding:4px 6px; border:1px solid #ddd; width:6%;">自评分</th>
+              <th style="padding:4px 6px; border:1px solid #ddd; width:6%;">上级分</th>
+              <th style="padding:4px 6px; border:1px solid #ddd; width:6%;">校准分</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tbodyRows}
+          </tbody>
+        </table>
+        <table style="width:100%; border-collapse:collapse; margin-bottom:12px; font-size:12px;">
+          <tr>
+            <td style="padding:4px 6px; border:1px solid #ddd; background:#f0f7ff; width:20%;">最终得分</td>
+            <td style="padding:4px 6px; border:1px solid #ddd; font-weight:bold;">${finalScoreText} 分</td>
+            <td style="padding:4px 6px; border:1px solid #ddd; background:#f0f7ff; width:20%;">绩效${scoreLabel}</td>
+            <td style="padding:4px 6px; border:1px solid #ddd; font-weight:bold;">${coefText}</td>
+          </tr>
+        </table>
+        ${task.supervisorComment ? `<p style="margin:6px 0; font-size:12px;"><strong>上级评价：</strong>${task.supervisorComment}</p>` : ''}
+        ${task.hrComment ? `<p style="margin:6px 0; font-size:12px;"><strong>HR评价：</strong>${task.hrComment}</p>` : ''}
+        ${task.calibReason ? `<p style="margin:6px 0; font-size:12px;"><strong>绩效校准原因：</strong>${task.calibReason}</p>` : ''}
+        <div style="margin-top:32px; font-size:12px;">
+          <p>员工签字：___________________</p>
+          <p style="color:#999; margin-top:6px;">日期：____年____月____日</p>
+        </div>
+      </div>
+    `;
+  }
+
+  function previewPrint(taskId) {
+    const task = DB.getById('assessmentTasks', taskId);
+    if (!task) return;
     const html = `
       <div style="max-width: 900px; margin: 0 auto;">
         <div class="alert alert-info">
           <span>🖨️ 以下是绩效表预览，点击下方"打印"按钮可打印。</span>
         </div>
-        <div id="printContent" style="background:#fff; padding:24px; border:1px solid var(--border); border-radius:8px; font-size:12px;">
-          <div style="text-align:center; margin-bottom:16px;">
-            <h1 style="font-size:16px; margin-bottom:4px;">吉麦新能源绩效考核表</h1>
-            <p style="color:#666; font-size:12px;">${plan.name}</p>
-          </div>
-          <table style="width:100%; border-collapse:collapse; margin-bottom:12px; font-size:12px;">
-            <tr>
-              <td style="padding:4px 6px; border:1px solid #ddd; width:12%; background:#f5f5f5;">姓名</td>
-              <td style="padding:4px 6px; border:1px solid #ddd; width:18%;">${user.name}</td>
-              <td style="padding:4px 6px; border:1px solid #ddd; width:12%; background:#f5f5f5;">工号</td>
-              <td style="padding:4px 6px; border:1px solid #ddd; width:18%;">${user.empNo}</td>
-              <td style="padding:4px 6px; border:1px solid #ddd; width:12%; background:#f5f5f5;">部门</td>
-              <td style="padding:4px 6px; border:1px solid #ddd; width:28%;">${dept ? dept.name : '-'}</td>
-            </tr>
-            <tr>
-              <td style="padding:4px 6px; border:1px solid #ddd; background:#f5f5f5;">岗位</td>
-              <td style="padding:4px 6px; border:1px solid #ddd;" colspan="5">
-                ${pos ? pos.name : '-'}${hasConcurrent ? `（本职 ${task.primaryWeight || 100}%）` : ''}
-                ${hasConcurrent ? ` + ${concPos ? concPos.name : ''}（兼任 ${task.concurrentWeight || 0}%）` : ''}
-              </td>
-            </tr>
-            <tr>
-              <td style="padding:4px 6px; border:1px solid #ddd; background:#f5f5f5;">考核周期</td>
-              <td style="padding:4px 6px; border:1px solid #ddd;">${task.cycle}</td>
-              <td style="padding:4px 6px; border:1px solid #ddd; background:#f5f5f5;">评分模式</td>
-              <td style="padding:4px 6px; border:1px solid #ddd;" colspan="3">${plan.scoreMode === 'percentage' ? '百分制' : '等级制'}</td>
-            </tr>
-          </table>
-          <table style="width:100%; border-collapse:collapse; margin-bottom:12px; font-size:12px;">
-            <thead>
-              <tr style="background:#f0f7ff;">
-                <th style="padding:4px 6px; border:1px solid #ddd; width:4%;">序号</th>
-                <th style="padding:4px 6px; border:1px solid #ddd; width:7%;">岗位</th>
-                <th style="padding:4px 6px; border:1px solid #ddd; width:16%;">考核指标</th>
-                <th style="padding:4px 6px; border:1px solid #ddd; width:5%;">权重</th>
-                <th style="padding:4px 6px; border:1px solid #ddd; width:8%;">目标值</th>
-                <th style="padding:4px 6px; border:1px solid #ddd; width:8%;">实际值</th>
-                <th style="padding:4px 6px; border:1px solid #ddd; width:6%;">完成率</th>
-                <th style="padding:4px 6px; border:1px solid #ddd; width:16%;">完成情况描述</th>
-                <th style="padding:4px 6px; border:1px solid #ddd; width:6%;">自评分</th>
-                <th style="padding:4px 6px; border:1px solid #ddd; width:6%;">上级分</th>
-                <th style="padding:4px 6px; border:1px solid #ddd; width:6%;">校准分</th>
-              </tr>
-            </thead>
-            <tbody>
-              ${tbodyRows}
-            </tbody>
-          </table>
-          <table style="width:100%; border-collapse:collapse; margin-bottom:12px; font-size:12px;">
-            <tr>
-              <td style="padding:4px 6px; border:1px solid #ddd; background:#f0f7ff; width:20%;">最终得分</td>
-              <td style="padding:4px 6px; border:1px solid #ddd; font-weight:bold;">${task.finalScore ? task.finalScore.toFixed(2) : (task.supervisorTotalScore ? task.supervisorTotalScore.toFixed(2) : '-')} 分</td>
-              <td style="padding:4px 6px; border:1px solid #ddd; background:#f0f7ff; width:20%;">绩效${plan.scoreMode === 'percentage' ? '系数' : '等级'}</td>
-              <td style="padding:4px 6px; border:1px solid #ddd; font-weight:bold;">${plan.scoreMode === 'percentage' ? App.calcBlendedCoefficient(task, task.finalScore || task.supervisorTotalScore || 0).toFixed(2) : (task.finalGrade || '-')}</td>
-            </tr>
-          </table>
-          ${task.supervisorComment ? `<p style="margin:6px 0; font-size:12px;"><strong>上级评价：</strong>${task.supervisorComment}</p>` : ''}
-          ${task.hrComment ? `<p style="margin:6px 0; font-size:12px;"><strong>HR评价：</strong>${task.hrComment}</p>` : ''}
-          ${task.calibReason ? `<p style="margin:6px 0; font-size:12px;"><strong>绩效校准原因：</strong>${task.calibReason}</p>` : ''}
-          <div style="margin-top:32px; font-size:12px;">
-            <p>员工签字：___________________</p>
-            <p style="color:#999; margin-top:6px;">日期：____年____月____日</p>
-          </div>
-        </div>
+        ${buildPrintContent(task)}
       </div>
     `;
-
     App.showModal('绩效表预览', html, `
       <button class="btn" onclick="App.closeModal()">关闭</button>
       <button class="btn btn-primary" onclick="Employee.doPrint()">🖨️ 打印</button>
     `, 'lg');
+  }
+
+  // HR角色：批量打印全体员工绩效表（合并到一个打印窗口，按人分页）
+  function printAll() {
+    const isHR = App.currentUser && App.currentUser.role === 'hr';
+    if (!isHR) return;
+    const tasks = DB.getAll('assessmentTasks').filter(t => ['completed', 'calibrated'].includes(t.status) || t.supervisorTotalScore !== null);
+    if (tasks.length === 0) { App.toast('暂无可打印的绩效表', 'warning'); return; }
+    let body = '';
+    tasks.forEach(t => {
+      body += `<div style="page-break-after: always; margin-bottom: 24px;">${buildPrintContent(t)}</div>`;
+    });
+    const win = window.open('', '_blank');
+    win.document.write(`
+      <html><head><title>全员绩效表打印</title>
+      <style>
+        body { font-family: -apple-system, 'Microsoft YaHei', sans-serif; padding: 20px; }
+        h1 { text-align: center; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+        th, td { border: 1px solid #ddd; padding: 8px; }
+        th { background: #f0f7ff; }
+        @media print { body { padding: 0; } @page { size: landscape; } }
+      </style></head><body>${body}</body></html>
+    `);
+    win.document.close();
+    setTimeout(() => { win.print(); }, 300);
   }
 
   function doPrint() {
@@ -1458,6 +1520,6 @@ const Employee = (function () {
     confirmPlan, submitConfirm, goToIndicatorConfig,
     filterIndicators, addIndicator, removeIndicator, updateWeight, saveConfig, resetConfig,
     startSelfEval, onRateChange, saveSelfEvalDraft, submitSelfEval,
-    viewResult, previewPrint, doPrint,
+    viewResult, previewPrint, doPrint, printAll,
   };
 })();
