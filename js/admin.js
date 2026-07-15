@@ -2595,7 +2595,7 @@ const Admin = (function () {
         </div>
         <div class="flex items-end gap-2">
           <button class="btn" onclick="Admin.exportStats()">📥 导出</button>
-          <button class="btn" onclick="Admin.printStats()">🖨️ 打印</button>
+          <button class="btn" onclick="Admin.printStats()">${App.isPrintSupported() ? '🖨️ 打印' : '📷 导出图片'}</button>
           <button class="btn btn-primary" onclick="Admin.openWecomSend()">📨 发送企微群</button>
         </div>
       </div>
@@ -3165,40 +3165,56 @@ const Admin = (function () {
     }).join('');
 
     const printDate = new Date().toLocaleDateString('zh-CN');
-
-    const oldFrame = document.getElementById('printStatsFrame');
-    if (oldFrame) oldFrame.remove();
-    const iframe = document.createElement('iframe');
-    iframe.id = 'printStatsFrame';
-    iframe.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;border:none;z-index:99999;';
-    document.body.appendChild(iframe);
-    const doc = iframe.contentDocument || iframe.contentWindow.document;
-    doc.write(`
-      <html><head><meta charset="UTF-8"><title>绩效系数统计表</title>
-      <style>
-        @page { size: portrait; margin: 8mm; }
-        body { font-family: 'SimSun', serif; font-size: 9pt; color: #000; padding: 12px; }
-        h1 { font-size: 14pt; text-align: center; margin-bottom: 3px; font-weight: bold; letter-spacing: 2px; }
-        .sub { text-align: center; font-size: 8pt; color: #666; margin-bottom: 10px; }
-        .footer { display: flex; justify-content: space-between; margin-top: 20px; padding: 0 10%; font-size: 8pt; }
-        .footer-item { text-align: center; }
-        @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
-      </style></head><body>
-      <h1>吉麦新能源部长级及以上人员${cycleText}绩效系数统计表</h1>
-      <div class="sub">打印时间：${printDate}</div>
-      ${planGroupsHTML}
-      <div class="footer">
+    const statsHeader = `
+      <h1 style="font-size:14pt; text-align:center; margin-bottom:3px; font-weight:bold; letter-spacing:2px;">吉麦新能源部长级及以上人员${cycleText}绩效系数统计表</h1>
+      <div style="text-align:center; font-size:8pt; color:#666; margin-bottom:10px;">打印时间：${printDate}</div>`;
+    const statsFooter = `
+      <div style="display:flex; justify-content:space-between; margin-top:20px; padding:0 10%; font-size:8pt;">
         <div style="font-size:9pt;">编制：___________________</div>
         <div style="font-size:9pt;">审核：___________________</div>
-        <div style="font-size:9pt;">
-批准：___________________</div>
-      </div>
-      <script>setTimeout(function(){ window.print(); }, 300);</script>
-      </body></html>
-    `);
-    doc.close();
-    iframe.contentWindow.focus();
-    iframe.contentWindow.onafterprint = function() { iframe.remove(); };
+        <div style="font-size:9pt;">批准：___________________</div>
+      </div>`;
+
+    if (App.isPrintSupported()) {
+      // 桌面浏览器：直接调用系统打印
+      const oldFrame = document.getElementById('printStatsFrame');
+      if (oldFrame) oldFrame.remove();
+      const iframe = document.createElement('iframe');
+      iframe.id = 'printStatsFrame';
+      iframe.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;border:none;z-index:99999;';
+      document.body.appendChild(iframe);
+      const doc = iframe.contentDocument || iframe.contentWindow.document;
+      doc.write(`
+        <html><head><meta charset="UTF-8"><title>绩效系数统计表</title>
+        <style>
+          @page { size: portrait; margin: 8mm; }
+          body { font-family: 'SimSun', serif; font-size: 9pt; color: #000; padding: 12px; }
+          h1 { font-size: 14pt; text-align: center; margin-bottom: 3px; font-weight: bold; letter-spacing: 2px; }
+          .sub { text-align: center; font-size: 8pt; color: #666; margin-bottom: 10px; }
+          .footer { display: flex; justify-content: space-between; margin-top: 20px; padding: 0 10%; font-size: 8pt; }
+          .footer-item { text-align: center; }
+          @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+        </style></head><body>
+        ${statsHeader}
+        ${planGroupsHTML}
+        ${statsFooter}
+        <script>setTimeout(function(){ window.print(); }, 300);</script>
+        </body></html>
+      `);
+      doc.close();
+      iframe.contentWindow.focus();
+      iframe.contentWindow.onafterprint = function() { iframe.remove(); };
+    } else {
+      // 降级：企业微信/移动端不支持直接打印，渲染为图片导出
+      const tmp = document.createElement('div');
+      tmp.style.cssText = 'position:absolute; left:-10000px; top:0; width:794px; background:#fff; padding:12px; box-sizing:border-box;';
+      tmp.innerHTML = statsHeader + planGroupsHTML + statsFooter;
+      document.body.appendChild(tmp);
+      App.captureElementToImage(tmp, { filename: '绩效系数统计表', title: '绩效系数统计表（图片导出）' }).then(function() {
+        setTimeout(function() { if (tmp.parentNode) tmp.parentNode.removeChild(tmp); }, 800);
+      });
+      App.toast('当前环境不支持直接打印，已为你生成可保存的图片', 'info');
+    }
   }
 
   // 保存人单酬系数/备注到任务数据
