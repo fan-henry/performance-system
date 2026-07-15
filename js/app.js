@@ -744,6 +744,42 @@ const App = (function () {
     }
   }
 
+  // 判断当前环境是否支持可靠的 window.print()（企业微信/移动端 WebView 对打印支持差）
+  function isPrintSupported() {
+    const ua = navigator.userAgent || '';
+    const isWeCom = /wxwork/i.test(ua);
+    const isMobile = /Mobi|Android|iPhone|iPod|iPad/i.test(ua) || (window.innerWidth > 0 && window.innerWidth < 768);
+    return !isWeCom && !isMobile;
+  }
+
+  // 将 DOM 元素截图导出为图片（用于不支持打印的环境降级：企业微信/移动端）
+  function captureElementToImage(sourceEl, opts) {
+    opts = opts || {};
+    const filename = opts.filename || 'print';
+    const title = opts.title || '打印预览';
+    if (typeof window.html2canvas !== 'function') {
+      toast('当前环境不支持生成图片，已在新窗口打开预览', 'warning');
+      try {
+        const w = window.open('', '_blank');
+        if (w) { w.document.write('<!DOCTYPE html><html><head><meta charset="utf-8"></head><body>' + sourceEl.innerHTML + '</body></html>'); w.document.close(); }
+      } catch (e) { toast('打开预览失败，请改用电脑浏览器打印', 'error'); }
+      return Promise.resolve();
+    }
+    return window.html2canvas(sourceEl, { scale: 2, backgroundColor: '#ffffff', useCORS: true, logging: false })
+      .then(canvas => {
+        const dataUrl = canvas.toDataURL('image/png');
+        const imgHtml = `<div style="text-align:center;"><img src="${dataUrl}" style="max-width:100%; border:1px solid #ddd; border-radius:6px;" /><div style="margin-top:12px; color:#666; font-size:13px;">长按图片可保存到相册，或点击下方按钮下载</div></div>`;
+        showModal(title, imgHtml, `
+          <button class="btn" onclick="App.closeModal()">关闭</button>
+          <a class="btn btn-primary" href="${dataUrl}" download="${filename}.png">📥 下载图片</a>
+        `, 'lg');
+      })
+      .catch(e => {
+        console.error('[PMS] 截图失败', e);
+        toast('生成图片失败：' + (e && e.message ? e.message : e), 'error');
+      });
+  }
+
   return {
     init, login, logout, navigate, handleLogin, renderApp,
     closeModal, confirm, confirmCallback, toast,
@@ -758,5 +794,6 @@ const App = (function () {
     closeChangePassword,
     changePassword,
     refreshAfterSync,
+    isPrintSupported, captureElementToImage,
   };
 })();
