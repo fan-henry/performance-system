@@ -1289,7 +1289,7 @@ const Employee = (function () {
       <div class="card">
         <div class="card-header">
           <h3>${isHR ? '全员绩效打印（HR）' : '绩效打印'}</h3>
-          ${isHR && tasks.length > 0 ? `<button class="btn btn-primary" onclick="Employee.printAll()">🖨️ 打印全部绩效表</button>` : ''}
+          ${isHR && tasks.length > 0 ? `<button class="btn btn-primary" onclick="Employee.printAll()">${App.isPrintSupported() ? '🖨️ 打印全部绩效表' : '📷 导出全部图片'}</button>` : ''}
         </div>
         ${filterBar}
         <div class="card-body no-pad">
@@ -1527,9 +1527,10 @@ const Employee = (function () {
         ${buildPrintContent(task)}
       </div>
     `;
+    const printBtnLabel = App.isPrintSupported() ? '🖨️ 打印' : '📷 导出图片';
     App.showModal('绩效表预览', html, `
       <button class="btn" onclick="App.closeModal()">关闭</button>
-      <button class="btn btn-primary" onclick="Employee.doPrint()">🖨️ 打印</button>
+      <button class="btn btn-primary" onclick="Employee.doPrint()">${printBtnLabel}</button>
     `, 'lg');
   }
 
@@ -1543,39 +1544,57 @@ const Employee = (function () {
     tasks.forEach(t => {
       body += `<div style="page-break-after: always; margin-bottom: 24px;">${buildPrintContent(t)}</div>`;
     });
-    const win = window.open('', '_blank');
-    win.document.write(`
-      <html><head><title>全员绩效表打印</title>
-      <style>
-        body { font-family: -apple-system, 'Microsoft YaHei', sans-serif; padding: 20px; }
-        h1 { text-align: center; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
-        th, td { border: 1px solid #ddd; padding: 8px; }
-        th { background: #f0f7ff; }
-        @media print { body { padding: 0; } @page { size: landscape; } }
-      </style></head><body>${body}</body></html>
-    `);
-    win.document.close();
-    setTimeout(() => { win.print(); }, 300);
+    if (App.isPrintSupported()) {
+      const win = window.open('', '_blank');
+      win.document.write(`
+        <html><head><title>全员绩效表打印</title>
+        <style>
+          body { font-family: -apple-system, 'Microsoft YaHei', sans-serif; padding: 20px; }
+          h1 { text-align: center; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+          th, td { border: 1px solid #ddd; padding: 8px; }
+          th { background: #f0f7ff; }
+          @media print { body { padding: 0; } @page { size: landscape; } }
+        </style></head><body>${body}</body></html>
+      `);
+      win.document.close();
+      setTimeout(() => { win.print(); }, 300);
+    } else {
+      // 降级：企业微信/移动端不支持直接打印，渲染为图片导出
+      const tmp = document.createElement('div');
+      tmp.style.cssText = 'position:absolute; left:-10000px; top:0; width:1000px; background:#fff; padding:20px; box-sizing:border-box;';
+      tmp.innerHTML = body;
+      document.body.appendChild(tmp);
+      App.captureElementToImage(tmp, { filename: '全员绩效表', title: '全员绩效表（图片导出）' }).then(function() {
+        setTimeout(function() { if (tmp.parentNode) tmp.parentNode.removeChild(tmp); }, 800);
+      });
+      App.toast('当前环境不支持直接打印，已为你生成可保存的图片', 'info');
+    }
   }
 
   function doPrint() {
     const printContent = document.getElementById('printContent');
     if (!printContent) return;
-    const win = window.open('', '_blank');
-    win.document.write(`
-      <html><head><title>绩效表打印</title>
-      <style>
-        body { font-family: -apple-system, 'Microsoft YaHei', sans-serif; padding: 20px; }
-        h1 { text-align: center; }
-        table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
-        th, td { border: 1px solid #ddd; padding: 8px; }
-        th { background: #f0f7ff; }
-        @media print { body { padding: 0; } @page { size: landscape; } }
-      </style></head><body>${printContent.innerHTML}</body></html>
-    `);
-    win.document.close();
-    setTimeout(() => { win.print(); }, 300);
+    if (App.isPrintSupported()) {
+      const win = window.open('', '_blank');
+      win.document.write(`
+        <html><head><title>绩效表打印</title>
+        <style>
+          body { font-family: -apple-system, 'Microsoft YaHei', sans-serif; padding: 20px; }
+          h1 { text-align: center; }
+          table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }
+          th, td { border: 1px solid #ddd; padding: 8px; }
+          th { background: #f0f7ff; }
+          @media print { body { padding: 0; } @page { size: landscape; } }
+        </style></head><body>${printContent.innerHTML}</body></html>
+      `);
+      win.document.close();
+      setTimeout(() => { win.print(); }, 300);
+    } else {
+      // 降级：企业微信/移动端不支持直接打印，渲染为图片导出
+      App.captureElementToImage(printContent, { filename: '绩效表', title: '绩效表（图片导出）' });
+      App.toast('当前环境不支持直接打印，已为你生成可保存的图片', 'info');
+    }
   }
 
   return {
