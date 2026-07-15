@@ -1501,7 +1501,9 @@ const Admin = (function () {
         : (plan && plan.scoreMode === 'percentage' && t.finalScore != null
             ? App.calcBlendedCoefficient(t, t.finalScore).toFixed(2)
             : (t.finalCoefficient ? t.finalCoefficient : ''));
-      const canComplete = isExternalFull || t.status === 'supervisor_done' || t.status === 'calibrated';
+      const isCompleted = t.status === 'completed';
+      // 已完成的任务不再显示"确认完成"按钮（外部100%是静态属性，需排除已完成状态）
+      const canComplete = !isCompleted && (isExternalFull || t.status === 'supervisor_done' || t.status === 'calibrated');
       return `<tr>
         <td>${emp ? emp.empNo : '-'}</td>
         <td class="font-semibold">${emp ? emp.name : '-'}</td>
