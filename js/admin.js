@@ -1492,6 +1492,16 @@ const Admin = (function () {
       const emp = DB.getById('employees', t.employeeId);
       const dept = emp ? DB.getById('departments', emp.deptId) : null;
       const plan = DB.getById('assessmentPlans', t.planId);
+      const extW = t.externalWeight != null ? Number(t.externalWeight) : 0;
+      const externalCoeff = t.externalCoeff != null ? Number(t.externalCoeff) : null;
+      const isExternalFull = extW === 1 && externalCoeff != null;
+      // 外部评价100%时直接显示最终绩效系数，无需内部评分完成
+      const coeffDisplay = isExternalFull
+        ? externalCoeff.toFixed(2)
+        : (plan && plan.scoreMode === 'percentage' && t.finalScore != null
+            ? App.calcBlendedCoefficient(t, t.finalScore).toFixed(2)
+            : (t.finalCoefficient ? t.finalCoefficient : ''));
+      const canComplete = isExternalFull || t.status === 'supervisor_done' || t.status === 'calibrated';
       return `<tr>
         <td>${emp ? emp.empNo : '-'}</td>
         <td class="font-semibold">${emp ? emp.name : '-'}</td>
@@ -1501,11 +1511,10 @@ const Admin = (function () {
         <td>${t.selfTotalScore ? t.selfTotalScore.toFixed(2) : '-'}</td>
         <td>${t.supervisorTotalScore ? t.supervisorTotalScore.toFixed(2) : '-'}</td>
         <td class="font-bold text-primary">${t.finalScore ? t.finalScore.toFixed(2) : '-'}</td>
-        <td>${t.finalGrade ? `<span class="grade-display grade-${t.finalGrade}" style="font-size:14px;">${t.finalGrade}</span>` : '-'} ${plan && plan.scoreMode === 'percentage' && t.finalScore != null ? '(' + App.calcBlendedCoefficient(t, t.finalScore).toFixed(2) + ')' : (t.finalCoefficient ? '(' + t.finalCoefficient + ')' : '')}</td>
+        <td>${t.finalGrade ? `<span class="grade-display grade-${t.finalGrade}" style="font-size:14px;">${t.finalGrade}</span>` : '-'}${coeffDisplay ? ' <span class="text-muted">(' + coeffDisplay + ')</span>' : ''}</td>
         <td>
           <button class="btn btn-sm btn-link" onclick="Admin.viewTask('${t.id}')">详情</button>
-          ${t.status === 'supervisor_done' && !(emp && emp.role === 'admin') ? `<button class="btn btn-sm btn-link text-success" onclick="Admin.completeTask('${t.id}')">确认完成</button>` : ''}
-          ${t.status === 'calibrated' ? `<button class="btn btn-sm btn-link text-success" onclick="Admin.completeTask('${t.id}')">确认完成</button>` : ''}
+          ${canComplete && !(t.status === 'supervisor_done' && emp && emp.role === 'admin') ? `<button class="btn btn-sm btn-link text-success" onclick="Admin.completeTask('${t.id}')">确认完成</button>` : ''}
           ${t.status !== 'pending_confirm' ? `<button class="btn btn-sm btn-link text-danger" onclick="Admin.returnTask('${t.id}')">退回</button>` : ''}
           <button class="btn btn-sm btn-link text-danger" onclick="Admin.deleteTask('${t.id}')">删除</button>
         </td>
@@ -1841,27 +1850,45 @@ const Admin = (function () {
   function completeTask(taskId) {
     const task = DB.getById('assessmentTasks', taskId);
     const plan = DB.getById('assessmentPlans', task.planId);
-    const finalScore = task.finalScore || task.supervisorTotalScore || 0;
 
-    let finalGrade = task.finalGrade;
-
-    // 先算出内部系数（融合前）
-    let finalCoefficient;
-    if (plan.scoreMode === 'percentage') {
-      finalCoefficient = App.calcCoefficient(finalScore);
-    } else {
-      const grade = App.getGrade(finalScore, plan);
-      finalGrade = grade ? grade.grade : 'C';
-      finalCoefficient = grade ? grade.coefficient : 1.0;
-    }
-    const internalCoefficient = finalCoefficient;
-
-    // 外部评价融合：最终系数 = 内部系数×(1−占比) + 外部系数×占比
+    // 外部评价100%：无需内部评分，直接以外部系数作为最终结果
     const extW = task.externalWeight != null ? Number(task.externalWeight) : 0;
     const externalCoeff = task.externalCoeff != null ? Number(task.externalCoeff) : null;
+    const isExternalFull = extW === 1 && externalCoeff != null;
+
+    let finalScore, finalGrade, finalCoefficient, internalCoefficient;
+
+    if (isExternalFull) {
+      finalScore = externalCoeff * 100;
+      finalCoefficient = externalCoeff;
+      internalCoefficient = externalCoeff;
+      if (plan.scoreMode === 'percentage') {
+        finalGrade = task.finalGrade || null;
+      } else {
+        const grade = App.getGrade(finalScore, plan);
+        finalGrade = grade ? grade.grade : (task.finalGrade || 'C');
+      }
+    } else {
+      finalScore = task.finalScore || task.supervisorTotalScore || 0;
+      // 先算出内部系数（融合前）
+      if (plan.scoreMode === 'percentage') {
+        finalCoefficient = App.calcCoefficient(finalScore);
+        finalGrade = task.finalGrade;
+      } else {
+        const grade = App.getGrade(finalScore, plan);
+        finalGrade = grade ? grade.grade : (task.finalGrade || 'C');
+        finalCoefficient = grade ? grade.coefficient : 1.0;
+      }
+      internalCoefficient = finalCoefficient;
+
+      // 外部评价融合：最终系数 = 内部系数×(1−占比) + 外部系数×占比
+      if (extW > 0 && externalCoeff != null) {
+        finalCoefficient = Math.round((finalCoefficient * (1 - extW) + externalCoeff * extW) * 1000) / 1000;
+      }
+    }
+
     let blendedInfo = '';
     if (extW > 0 && externalCoeff != null) {
-      finalCoefficient = Math.round((finalCoefficient * (1 - extW) + externalCoeff * extW) * 1000) / 1000;
       blendedInfo = `（含外部评价${Math.round(extW * 100)}%：内部 ${internalCoefficient} → 外部 ${externalCoeff}）`;
     }
 
