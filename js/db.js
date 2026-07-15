@@ -27,7 +27,33 @@ const DB = (function () {
     ],
 
     employees: [
-      { id: 'E017', empNo: 'admin', name: '系统管理员', password: 'admin123', deptId: 'D004', positionId: 'P011', superiorId: null, role: 'sysadmin', hireDate: '2018-01-01', status: 'active', phone: '', email: 'admin@company.com' },
+      { id: 'E017', empNo: 'admin', name: '系统管理员', password: 'admin123', deptId: 'D004', positionId: 'P011', superiorId: 'E012', role: 'sysadmin', hireDate: '2018-01-01', status: 'active', phone: '13800000017', email: 'admin@company.com' },
+      { id: 'Emr4dyryiT7XB', empNo: '213949', name: '杨敬一', password: '123456', deptId: 'D001', positionId: 'P001', superiorId: null, role: 'admin', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4e0hmo0UTH', empNo: '213705', name: '葛宇', password: 'Lpj86337092', deptId: 'D001', positionId: 'Pmr4e2k2e53CW', superiorId: 'Emr4dyryiT7XB', role: 'supervisor', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4e3ijmGDDK', empNo: '213448', name: '陈俊', password: '123456', deptId: 'D001', positionId: 'Pmr4e2k2e53CW', superiorId: 'Emr4dyryiT7XB', role: 'supervisor', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4e4w6783MF', empNo: '213388', name: '李爽', password: '123456', deptId: 'D001', positionId: 'Pmr4e2k2e53CW', superiorId: 'Emr4dyryiT7XB', role: 'supervisor', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4eavtySNUI', empNo: '213591', name: '方桂笋', password: '5515138', deptId: 'D003', positionId: 'Pmr4eaa71CCZJ', superiorId: 'Emr4dyryiT7XB', role: 'supervisor', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4ec9oiXBDI', empNo: '213703', name: '鲁青春', password: '123456', deptId: 'Dmr4dn6xeASRR', positionId: 'Pmr4eb8n7GU8M', superiorId: 'Emr4dyryiT7XB', role: 'employee', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4eerelI0EH', empNo: '211237', name: '刘伟', password: '123456', deptId: 'Dmr4docfxDA5K', positionId: 'Pmr4ee83vMIPK', superiorId: 'Emr4dyryiT7XB', role: 'employee', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4eg4b6F2CH', empNo: '170848', name: '杨洪彪', password: 'Yhb000123', deptId: 'Dmr4doknz2A80', positionId: 'Pmr4efkg0EG7D', superiorId: 'Emr4dyryiT7XB', role: 'employee', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4ei96oO9UX', empNo: '211068', name: '张晓明', password: 'zff80523', deptId: 'Dmr4doy4y0ZF4', positionId: 'Pmr4ehnygJ4H9', superiorId: 'Emr4dyryiT7XB', role: 'employee', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4eliqdHEG6', empNo: '210013', name: '陈雷', password: '123456', deptId: 'Dmr4dpjibVCA7', positionId: 'Pmr4e7dh5P0XL', superiorId: 'Emr4e3ijmGDDK', role: 'employee', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4eme2oY9NP', empNo: '160083', name: '梁承志', password: '123456', deptId: 'Dmr4dpjibVCA7', positionId: 'Pmr4e7dh5P0XL', superiorId: 'Emr4e3ijmGDDK', role: 'employee', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4emytcLVZH', empNo: '213502', name: '刘学成', password: '123456', deptId: 'Dmr4dpjibVCA7', positionId: 'Pmr4ekqqaCB86', superiorId: 'Emr4e3ijmGDDK', role: 'employee', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4epqomGQ6P', empNo: '213765', name: '阚士辉', password: '123456', deptId: 'Dmr4dpyam4DCV', positionId: 'Pmr4ent332BW6', superiorId: 'Emr4dyryiT7XB', role: 'supervisor', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4eqru4D5C3', empNo: '210267', name: '曹健', password: '123456', deptId: 'Dmr4dqlm5SIXU', positionId: 'Pmr4eo9184XLI', superiorId: 'Emr4epqomGQ6P', role: 'employee', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4foaveTXGN', empNo: '213778', name: '孙彪', password: '123456', deptId: 'Dmr4dsrepC5W5', positionId: 'Pmr4flul5PSWM', superiorId: 'Emr4dyryiT7XB', role: 'supervisor', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4fotapEI14', empNo: '213884', name: '张江波', password: '123456', deptId: 'Dmr4dsrepC5W5', positionId: 'Pmr4fm00c9VUL', superiorId: 'Emr4foaveTXGN', role: 'employee', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4fpeywWR0L', empNo: '211027', name: '尤磊', password: '123456', deptId: 'Dmr4dqzc3L8X4', positionId: 'Pmr4eopyeXYUL', superiorId: 'Emr4foaveTXGN', role: 'employee', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4frrkv7NNH', empNo: '212917', name: '刘江超', password: '123456', deptId: 'Dmr4dsi179G6J', positionId: 'Pmr4e82mxM97V', superiorId: 'Emr4e0hmo0UTH', role: 'employee', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4fsa0eK26T', empNo: '213905', name: '孙中辉', password: '123456', deptId: 'Dmr4dszwyF7NQ', positionId: 'Pmr4fmdm4CTE1', superiorId: 'Emr4dyryiT7XB', role: 'employee', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4ft2nm5JKR', empNo: '160305', name: '董奔', password: '123456', deptId: 'Dmr4dtbes5M9M', positionId: 'Pmr4fmomdPRL5', superiorId: 'Emr4dyryiT7XB', role: 'supervisor', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4ftqec0DL1', empNo: '00643', name: '鹿守闯', password: '123456', deptId: 'Dmr4duxjyO1M7', positionId: 'Pmr4fn4mfM23Y', superiorId: 'Emr4ft2nm5JKR', role: 'employee', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4fu4guXKJS', empNo: '213486', name: '石同友', password: '123456', deptId: 'Dmr4dvbt9E1NR', positionId: 'Pmr4fn9ywD0CQ', superiorId: 'Emr4ft2nm5JKR', role: 'employee', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4fv4vnRQS8', empNo: '213986', name: '郑可', password: '123456', deptId: 'Dmr4dupj8L9Q6', positionId: 'Pmr4fmybyXK4L', superiorId: 'Emr4ft2nm5JKR', role: 'employee', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4fxk3q9HJO', empNo: '170670', name: '李光', password: '123456', deptId: 'Dmr4du513YK2K', positionId: 'Pmr4fx0ol7IOR', superiorId: 'Emr4dyryiT7XB', role: 'supervisor', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4fy5xjRDXL', empNo: '212804', name: '范海川', password: 'fan@123', deptId: 'Dmr4dtwgl391U', positionId: 'Pmr4fx68dJUAX', superiorId: 'Emr4dyryiT7XB', role: 'hr', hireDate: '', status: 'active', phone: '', email: '' },
+      { id: 'Emr4fzdz451OC', empNo: '210150', name: '韩颖', password: '123456', deptId: 'Dmr4dtwgl391U', positionId: 'Pmr4fzq4eE0MO', superiorId: 'Emr4fy5xjRDXL', role: 'hr', hireDate: '', status: 'active', phone: '', email: '' },
     ],
 
     indicators: [],
@@ -213,6 +239,23 @@ const DB = (function () {
             }
           }
         }
+        continue;
+      }
+      // 员工表以云端为权威：登录依赖账号密码，必须保证云端正确密码能纠正本地脏数据
+      // （例如本地曾改过密码导致 _updatedAt 较新而永久优先云端）。云端有则用云端，
+      // 仅把本地存在而云端未同步的记录作为补充保留，避免丢失本地新增员工。
+      if (table === 'employees') {
+        var empResult = (cloud[table] || []).filter(function(it) {
+          return !(it && it.id && mergedDeleted[table] && mergedDeleted[table][it.id]);
+        });
+        var empCloudIds = {};
+        empResult.forEach(function(it) { if (it && it.id) empCloudIds[it.id] = true; });
+        (result[table] || []).forEach(function(localItem) {
+          if (localItem && localItem.id && !empCloudIds[localItem.id] && !(mergedDeleted[table] && mergedDeleted[table][localItem.id])) {
+            empResult.push(localItem);
+          }
+        });
+        result[table] = empResult;
         continue;
       }
       if (!result[table]) {
