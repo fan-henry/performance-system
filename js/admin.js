@@ -1501,7 +1501,7 @@ const Admin = (function () {
         <td>${t.selfTotalScore ? t.selfTotalScore.toFixed(2) : '-'}</td>
         <td>${t.supervisorTotalScore ? t.supervisorTotalScore.toFixed(2) : '-'}</td>
         <td class="font-bold text-primary">${t.finalScore ? t.finalScore.toFixed(2) : '-'}</td>
-        <td>${t.finalGrade ? `<span class="grade-display grade-${t.finalGrade}" style="font-size:14px;">${t.finalGrade}</span>` : '-'} ${t.finalCoefficient ? '(' + t.finalCoefficient + ')' : ''}</td>
+        <td>${t.finalGrade ? `<span class="grade-display grade-${t.finalGrade}" style="font-size:14px;">${t.finalGrade}</span>` : '-'} ${plan && plan.scoreMode === 'percentage' && t.finalScore != null ? '(' + App.calcBlendedCoefficient(t, t.finalScore).toFixed(2) + ')' : (t.finalCoefficient ? '(' + t.finalCoefficient + ')' : '')}</td>
         <td>
           <button class="btn btn-sm btn-link" onclick="Admin.viewTask('${t.id}')">详情</button>
           ${t.status === 'supervisor_done' && !(emp && emp.role === 'admin') ? `<button class="btn btn-sm btn-link text-success" onclick="Admin.completeTask('${t.id}')">确认完成</button>` : ''}
@@ -2440,7 +2440,7 @@ const Admin = (function () {
         </div>
       </div>
 
-      <form id="calibForm">
+      <form id="calibForm" data-task-id="${taskId}">
         <div class="form-group">
           <label class="form-label">调整后得分<span class="required">*</span></label>
           <input type="number" class="form-input" name="adjustedScore" value="${currentScore.toFixed(2)}" step="0.01" required${isPercent ? ' oninput="Admin.onCalibScoreChange()"' : ''}>
@@ -2478,10 +2478,12 @@ const Admin = (function () {
     // 等级制下必须人工选择等级，否则拦截
     if (!isPercent && !form.adjustedGrade.value) { App.toast('请选择调整后等级', 'error'); return; }
     const beforeScore = task.finalScore || task.supervisorTotalScore || 0;
-    const beforeCoeff = App.calcCoefficient(beforeScore);
-    const afterCoeff = App.calcCoefficient(adjustedScore);
-    const beforeGrade = task.finalGrade || (isPercent ? beforeCoeff.toFixed(2) : '未评定');
-    const adjustedGrade = isPercent ? afterCoeff.toFixed(2) : form.adjustedGrade.value;
+    const beforeInternalCoeff = App.calcCoefficient(beforeScore);
+    const beforeBlendedCoeff = App.calcBlendedCoefficient(task, beforeScore);
+    const afterInternalCoeff = App.calcCoefficient(adjustedScore);
+    const afterBlendedCoeff = App.calcBlendedCoefficient(task, adjustedScore);
+    const beforeGrade = task.finalGrade || (isPercent ? beforeBlendedCoeff.toFixed(2) : '未评定');
+    const adjustedGrade = isPercent ? afterBlendedCoeff.toFixed(2) : form.adjustedGrade.value;
     const gradeRule = !isPercent ? plan.gradeRules.find(r => r.grade === adjustedGrade) : null;
 
     // 记录校准历史
@@ -2502,14 +2504,14 @@ const Admin = (function () {
     DB.update('assessmentTasks', taskId, {
       finalScore: adjustedScore,
       finalGrade: adjustedGrade,
-      finalCoefficient: isPercent ? afterCoeff : (gradeRule ? gradeRule.coefficient : 1.0),
+      finalCoefficient: isPercent ? afterBlendedCoeff : (gradeRule ? gradeRule.coefficient : 1.0),
       calibrated: true,
       status: 'calibrated',
       hrComment,
       calibReason: reason,
     });
 
-    const gradeLog = isPercent ? `系数 ${beforeCoeff.toFixed(2)}→${afterCoeff.toFixed(2)}` : `${beforeGrade}→${adjustedGrade}`;
+    const gradeLog = isPercent ? `系数 ${beforeBlendedCoeff.toFixed(2)}→${afterBlendedCoeff.toFixed(2)}` : `${beforeGrade}→${adjustedGrade}`;
     DB.log(App.currentUser.name, '绩效校准', `校准 ${App.getEmployeeName(task.employeeId)}：${beforeScore.toFixed(2)}→${adjustedScore.toFixed(2)}，${gradeLog}`);
     App.closeModal();
     App.toast('校准成功', 'success');
@@ -2519,9 +2521,12 @@ const Admin = (function () {
   function onCalibScoreChange() {
     const scoreEl = document.querySelector('input[name="adjustedScore"]');
     const coeffEl = document.getElementById('calibCoeffDisplay');
+    const form = document.getElementById('calibForm');
     if (scoreEl && coeffEl) {
+      const taskId = form && form.dataset.taskId ? form.dataset.taskId : null;
+      const task = taskId ? DB.getById('assessmentTasks', taskId) : null;
       const score = parseFloat(scoreEl.value) || 0;
-      coeffEl.value = App.calcCoefficient(score).toFixed(2);
+      coeffEl.value = App.calcBlendedCoefficient(task, score).toFixed(2);
     }
   }
 
@@ -2607,9 +2612,9 @@ const Admin = (function () {
     const stInfo = ALL_STATUS_MAP[t.status] || { text: t.status, tag: 'tag-gray' };
     const renDanChouCoef = t.renDanChouCoef != null ? t.renDanChouCoef : '';
     const remark = t.remark || '';
-    // 未确认完成时，按内部系数与外部评价权重实时计算融合系数
-    let displayCoeff = t.finalCoefficient;
-    if (isPercent && displayCoeff == null && t.externalWeight != null && Number(t.externalWeight) > 0 && t.externalCoeff != null) {
+    // 百分制下按当前得分实时融合外部评价权重计算绩效系数，与绩效校准页保持一致
+    let displayCoeff = null;
+    if (isPercent && rawScore != null) {
       displayCoeff = App.calcBlendedCoefficient(t, score);
     }
     return `<tr>
@@ -2863,7 +2868,7 @@ const Admin = (function () {
     tasks.forEach(t => {
       const emp = DB.getById('employees', t.employeeId);
       const finalScore = t.finalScore || t.supervisorTotalScore || t.selfTotalScore || '';
-      const coeff = t.finalCoefficient != null ? t.finalCoefficient : (finalScore ? (finalScore / 100).toFixed(2) : '');
+      const coeff = finalScore ? App.calcBlendedCoefficient(t, finalScore).toFixed(2) : '';
       // 外部评价展示值：有外部占比且系数时才输出，否则内部系数=最终系数
       const _w = t.externalWeight != null ? Number(t.externalWeight) : 0;
       const _ec = t.externalCoeff != null ? Number(t.externalCoeff) : null;
@@ -3067,11 +3072,11 @@ const Admin = (function () {
             const emp = DB.getById('employees', t.employeeId);
             const dept = emp ? DB.getById('departments', emp.deptId) : null;
             const pos = emp ? DB.getById('positions', emp.positionId) : null;
-            const coef = t.finalCoefficient != null ? t.finalCoefficient : '-';
-            let _coefDisplay = coef;
             const rawScoreForPrint = getCurrentScoreForDisplay(t);
-            if (_coefDisplay === '-' && t.externalWeight != null && Number(t.externalWeight) > 0 && t.externalCoeff != null) {
-              _coefDisplay = App.calcBlendedCoefficient(t, rawScoreForPrint != null ? rawScoreForPrint : 0);
+            const isPercentPrint = plan && plan.scoreMode === 'percentage';
+            let _coefDisplay = '-';
+            if (isPercentPrint && rawScoreForPrint != null) {
+              _coefDisplay = App.calcBlendedCoefficient(t, rawScoreForPrint);
             }
             const renDanChouCoef = t.renDanChouCoef != null ? t.renDanChouCoef : '';
             const remark = t.remark || '';
@@ -3204,7 +3209,7 @@ const Admin = (function () {
         ${isPercent ? `
           <div class="flex-1 p-4" style="background: #f9f0ff; border-radius: 8px;">
             <div class="text-sm text-tertiary">考核系数</div>
-            <div class="score-display" style="font-size:28px; font-weight:700; color: #722ed1;">${task.finalCoefficient != null ? task.finalCoefficient : (isPercent && task.externalWeight != null && Number(task.externalWeight) > 0 && task.externalCoeff != null ? App.calcBlendedCoefficient(task, rawScoreForDetail != null ? rawScoreForDetail : 0) : '-')}</div>
+            <div class="score-display" style="font-size:28px; font-weight:700; color: #722ed1;">${isPercent && rawScoreForDetail != null ? App.calcBlendedCoefficient(task, rawScoreForDetail) : '-'}</div>
           </div>
         ` : `
           <div class="flex-1 p-4" style="background: #f9f0ff; border-radius: 8px;">
