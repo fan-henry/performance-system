@@ -3,6 +3,10 @@
  */
 const Employee = (function () {
 
+  // HR打印筛选状态
+  let printFilters = { planId: '', deptId: '', keyword: '' };
+  let _printContainer = null;
+
   function render(page, container) {
     const user = App.currentUser;
     const pages = {
@@ -1241,24 +1245,45 @@ const Employee = (function () {
   // ========== 绩效打印 ==========
   function renderPrint(container) {
     const isHR = App.currentUser && App.currentUser.role === 'hr';
+    _printContainer = container;
     let tasks;
     if (isHR) {
-      // HR管理角色：可查看并打印全体员工绩效
-      tasks = DB.getAll('assessmentTasks').filter(t => ['completed', 'calibrated'].includes(t.status) || t.supervisorTotalScore !== null);
+      // HR管理角色：可查看并打印全体员工绩效（含筛选）
+      tasks = getHRPrintableTasks();
     } else {
       tasks = App.getMyTasks().filter(t => ['completed', 'calibrated'].includes(t.status) || t.supervisorTotalScore !== null);
     }
-    // 按部门、姓名排序，便于 HR 批量查阅
-    tasks.sort((a, b) => {
-      const ea = DB.getById('employees', a.employeeId) || {};
-      const eb = DB.getById('employees', b.employeeId) || {};
-      const da = (DB.getById('departments', ea.deptId) || {}).name || '';
-      const db = (DB.getById('departments', eb.deptId) || {}).name || '';
-      if (da !== db) return da.localeCompare(db, 'zh');
-      return (ea.name || '').localeCompare(eb.name || '', 'zh');
-    });
 
     const scoreOf = (t) => t.finalScore != null ? t.finalScore.toFixed(2) : (t.supervisorTotalScore != null ? t.supervisorTotalScore.toFixed(2) : '-');
+
+    // HR 筛选栏
+    const plans = DB.getAll('assessmentPlans').sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+    const depts = DB.getAll('departments').sort((a, b) => (a.sort || 0) - (b.sort || 0));
+    const filterBar = isHR ? `
+      <div class="filter-bar" style="display:flex; flex-wrap:wrap; gap:14px; align-items:flex-end; padding:14px 16px; background:#fafcff; border-bottom:1px solid var(--border);">
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">考核方案</label>
+          <select id="pfPlan" class="form-input" style="min-width:190px;">
+            <option value="">全部方案</option>
+            ${plans.map(p => `<option value="${p.id}" ${printFilters.planId === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">部门</label>
+          <select id="pfDept" class="form-input" style="min-width:160px;">
+            <option value="">全部部门</option>
+            ${depts.map(d => `<option value="${d.id}" ${printFilters.deptId === d.id ? 'selected' : ''}>${d.name}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group" style="margin:0;">
+          <label class="form-label">姓名</label>
+          <input id="pfKeyword" class="form-input" style="min-width:150px;" placeholder="输入姓名关键字" value="${printFilters.keyword}">
+        </div>
+        <button class="btn btn-primary" onclick="Employee.applyPrintFilter()">🔍 查询</button>
+        <button class="btn" onclick="Employee.resetPrintFilter()">↺ 重置</button>
+        <span style="align-self:center; color:#888; font-size:13px; margin-left:auto;">共 ${tasks.length} 条</span>
+      </div>
+    ` : '';
 
     container.innerHTML = `
       <div class="card">
@@ -1266,6 +1291,7 @@ const Employee = (function () {
           <h3>${isHR ? '全员绩效打印（HR）' : '绩效打印'}</h3>
           ${isHR && tasks.length > 0 ? `<button class="btn btn-primary" onclick="Employee.printAll()">🖨️ 打印全部绩效表</button>` : ''}
         </div>
+        ${filterBar}
         <div class="card-body no-pad">
           ${tasks.length === 0 ? `
             <div class="empty-state"><div class="icon">🖨️</div><p>暂无可打印的绩效表</p></div>
@@ -1305,6 +1331,43 @@ const Employee = (function () {
         </div>
       </div>
     `;
+  }
+
+  // 获取 HR 可打印的全部任务（含筛选条件 + 默认排序）
+  function getHRPrintableTasks() {
+    let tasks = DB.getAll('assessmentTasks').filter(t => ['completed', 'calibrated'].includes(t.status) || t.supervisorTotalScore !== null);
+    if (printFilters.planId) tasks = tasks.filter(t => t.planId === printFilters.planId);
+    if (printFilters.deptId) tasks = tasks.filter(t => { const e = DB.getById('employees', t.employeeId); return e && e.deptId === printFilters.deptId; });
+    if (printFilters.keyword) {
+      const kw = printFilters.keyword.trim().toLowerCase();
+      tasks = tasks.filter(t => { const e = DB.getById('employees', t.employeeId); return e && e.name.toLowerCase().includes(kw); });
+    }
+    tasks.sort((a, b) => {
+      const ea = DB.getById('employees', a.employeeId) || {};
+      const eb = DB.getById('employees', b.employeeId) || {};
+      const da = (DB.getById('departments', ea.deptId) || {}).name || '';
+      const db = (DB.getById('departments', eb.deptId) || {}).name || '';
+      if (da !== db) return da.localeCompare(db, 'zh');
+      return (ea.name || '').localeCompare(eb.name || '', 'zh');
+    });
+    return tasks;
+  }
+
+  // HR 应用筛选
+  function applyPrintFilter() {
+    const planEl = document.getElementById('pfPlan');
+    const deptEl = document.getElementById('pfDept');
+    const kwEl = document.getElementById('pfKeyword');
+    printFilters.planId = planEl ? planEl.value : '';
+    printFilters.deptId = deptEl ? deptEl.value : '';
+    printFilters.keyword = kwEl ? kwEl.value : '';
+    if (_printContainer) renderPrint(_printContainer);
+  }
+
+  // HR 重置筛选
+  function resetPrintFilter() {
+    printFilters = { planId: '', deptId: '', keyword: '' };
+    if (_printContainer) renderPrint(_printContainer);
   }
 
   // 构建单个绩效表打印内容（员工/HR通用）
@@ -1474,7 +1537,7 @@ const Employee = (function () {
   function printAll() {
     const isHR = App.currentUser && App.currentUser.role === 'hr';
     if (!isHR) return;
-    const tasks = DB.getAll('assessmentTasks').filter(t => ['completed', 'calibrated'].includes(t.status) || t.supervisorTotalScore !== null);
+    const tasks = getHRPrintableTasks();
     if (tasks.length === 0) { App.toast('暂无可打印的绩效表', 'warning'); return; }
     let body = '';
     tasks.forEach(t => {
@@ -1520,6 +1583,6 @@ const Employee = (function () {
     confirmPlan, submitConfirm, goToIndicatorConfig,
     filterIndicators, addIndicator, removeIndicator, updateWeight, saveConfig, resetConfig,
     startSelfEval, onRateChange, saveSelfEvalDraft, submitSelfEval,
-    viewResult, previewPrint, doPrint, printAll,
+    viewResult, previewPrint, doPrint, printAll, applyPrintFilter, resetPrintFilter,
   };
 })();
