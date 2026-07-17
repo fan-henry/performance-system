@@ -2825,9 +2825,9 @@ const Admin = (function () {
         <input class="form-input" id="wecomHook" type="text" value="${hookUrl}" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxxxx">
       </div>
       <div class="form-group">
-        <label class="form-label">消息内容（支持 markdown 语法，请手工填写）</label>
-        <textarea class="form-textarea" id="wecomMsg" rows="9" placeholder="在此输入要发送到群的消息内容..." style="font-family:var(--font-mono,monospace); font-size:13px; line-height:1.6;"></textarea>
-        <span class="text-sm text-tertiary">留空将无法发送，请填写内容后发送。</span>
+        <label class="form-label">消息内容（支持 markdown 语法，标题请写成 <code>## 标题</code> 格式）</label>
+        <textarea class="form-textarea" id="wecomMsg" rows="9" placeholder="在此输入要发送到群的消息内容...&#10;例如：&#10;## 6月份绩效评价通知&#10;绩效评价已经完成，请大家将绩效表打印签字后提交至人资行政部。&#10;时间截止：7月15日15:00前" style="font-family:var(--font-mono,monospace); font-size:13px; line-height:1.6;"></textarea>
+        <span class="text-sm text-tertiary">系统会自动规范化标题语法（##标题 → ## 标题）。</span>
       </div>
     `;
     App.showModal('发送消息到企微群', html, `
@@ -2835,6 +2835,15 @@ const Admin = (function () {
       <button class="btn" onclick="Admin.saveWecomHook()">💾 保存地址</button>
       <button class="btn btn-primary" onclick="Admin.sendWecomMessage()">发送</button>
     `);
+  }
+
+  // 规范化用户输入的 markdown 标题语法：#标题 -> # 标题，兼容企微解析
+  function normalizeMarkdown(content) {
+    if (!content) return content;
+    // 处理行首的 # 标题语法：每行最多匹配 6 个 #
+    return content.replace(/^(#{1,6})\s*([^\s#][^\n]*)/gm, function(_, hashes, text) {
+      return hashes + ' ' + text.trim();
+    });
   }
 
   function sendWecomMessage() {
@@ -2848,9 +2857,11 @@ const Admin = (function () {
       App.toast('Webhook 地址格式不正确（需以 http:// 或 https:// 开头）', 'error'); return;
     }
     if (!content) { App.toast('消息内容不能为空', 'error'); return; }
+    // 自动修正 markdown 标题语法（如 ##标题 -> ## 标题），确保企微能正确解析
+    const normalizedContent = normalizeMarkdown(content);
     // 保存 Webhook（带时间戳，跨云端合并时新的胜出）
     DB.setSetting('wecomWebhook', { url: url, _updatedAt: Date.now() });
-    const payload = { msgtype: 'markdown', markdown: { content: content } };
+    const payload = { msgtype: 'markdown', markdown: { content: normalizedContent } };
     // 企业微信 Webhook 无 CORS 响应头：用 no-cors + text/plain 盲发（跳过预检，读不到返回体）
     fetch(url, {
       method: 'POST',
