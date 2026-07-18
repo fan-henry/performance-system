@@ -2793,8 +2793,8 @@ const Admin = (function () {
     return tasks;
   }
 
-  // 根据当前筛选结果生成默认播报文案（企业微信 markdown 语法）
-  function buildWecomSummary(tasks) {
+  // 生成编辑器默认内容（HTML，所见即所得）
+  function buildWecomDefaultHTML(tasks) {
     const scores = tasks.map(t => t.finalScore || t.supervisorTotalScore || 0).filter(s => s > 0);
     const avg = scores.length ? (scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
     const max = scores.length ? Math.max(...scores) : 0;
@@ -2803,14 +2803,15 @@ const Admin = (function () {
     const cycleText = cycles.length ? cycles.join('、') : '本期';
     const completed = tasks.filter(t => t.status === 'completed').length;
     return [
-      `## 绩效结果播报`,
-      `> 考核周期：**${cycleText}**`,
-      `> 参与人数：**${tasks.length} 人**　已完成：**${completed} 人**`,
-      `> 平均得分：**${avg.toFixed(2)}**`,
-      `> 最高分：**${max.toFixed(2)}**　最低分：**${min.toFixed(2)}**`,
-      ``,
-      `请相关同事登录系统查看个人绩效详情。`
-    ].join('\n');
+      '<h2>绩效结果播报</h2>',
+      '<blockquote>',
+      '考核周期：<b>' + cycleText + '</b><br>',
+      '参与人数：<b>' + tasks.length + ' 人</b>　已完成：<b>' + completed + ' 人</b><br>',
+      '平均得分：<b>' + avg.toFixed(2) + '</b><br>',
+      '最高分：<b>' + max.toFixed(2) + '</b>　最低分：<b>' + min.toFixed(2) + '</b>',
+      '</blockquote>',
+      '<p>请相关同事登录系统查看个人绩效详情。</p>'
+    ].join('');
   }
 
   // 打开"发送企微群"弹窗：顶部配置 Webhook 地址（可修改），下方为消息内容框
@@ -2818,16 +2819,51 @@ const Admin = (function () {
     const tasks = getFilteredStatsTasks();
     const saved = DB.getSetting('wecomWebhook');
     const hookUrl = (saved && saved.url) ? saved.url : (typeof saved === 'string' ? saved : '');
+    const defaultHTML = buildWecomDefaultHTML(tasks);
     const html = `
+      <style>
+        .wysiwyg-toolbar{display:flex;flex-wrap:wrap;gap:4px;padding:6px 8px;border:1px solid var(--border);border-bottom:none;border-radius:6px 6px 0 0;background:#fafafa;}
+        .wys-btn{border:1px solid var(--border);background:#fff;border-radius:4px;padding:3px 9px;font-size:13px;cursor:pointer;line-height:1.4;}
+        .wys-btn:hover{background:#f0f5ff;}
+        .wys-sep{width:1px;background:var(--border);margin:0 2px;}
+        .wysiwyg-editor{min-height:170px;max-height:380px;overflow:auto;padding:12px 14px;border:1px solid var(--border);border-radius:0 0 6px 6px;font-size:14px;line-height:1.7;background:#fff;outline:none;}
+        .wysiwyg-editor:focus{border-color:#1677ff;box-shadow:0 0 0 2px rgba(22,119,255,.12);}
+        .wysiwyg-editor h1{font-size:20px;font-weight:700;margin:.4em 0;}
+        .wysiwyg-editor h2{font-size:17px;font-weight:700;margin:.4em 0;color:#1677ff;}
+        .wysiwyg-editor h3{font-size:15px;font-weight:700;margin:.4em 0;}
+        .wysiwyg-editor blockquote{margin:.4em 0;padding:6px 12px;border-left:3px solid #ddd;background:#f7f7f7;color:#555;}
+        .wysiwyg-editor ul,.wysiwyg-editor ol{margin:.4em 0;padding-left:1.5em;}
+        .wysiwyg-editor a{color:#1677ff;}
+        .wysiwyg-preview{min-height:170px;padding:12px 14px;border:1px solid var(--border);border-radius:0 0 6px 6px;font-size:14px;line-height:1.7;background:#fff;overflow:auto;max-height:380px;}
+        .wysiwyg-preview blockquote{border-left:3px solid #ddd;background:#f7f7f7;padding:6px 12px;color:#555;margin:.4em 0;}
+        .wysiwyg-preview h1{font-size:20px;} .wysiwyg-preview h2{font-size:17px;color:#1677ff;} .wysiwyg-preview h3{font-size:15px;}
+        .wysiwyg-preview ul,.wysiwyg-preview ol{margin:.4em 0;padding-left:1.5em;}
+      </style>
       <div class="alert alert-info">通过企业微信群机器人 Webhook 发送。请先在目标群「添加群机器人」获取 Webhook 地址。</div>
       <div class="form-group">
         <label class="form-label">Webhook 地址（修改后点「保存地址」即可，无需发送）</label>
         <input class="form-input" id="wecomHook" type="text" value="${hookUrl}" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=xxxxxxxx">
       </div>
       <div class="form-group">
-        <label class="form-label">消息内容（支持 markdown 语法，标题请写成 <code>## 标题</code> 格式）</label>
-        <textarea class="form-textarea" id="wecomMsg" rows="9" placeholder="在此输入要发送到群的消息内容...&#10;例如：&#10;## 6月份绩效评价通知&#10;绩效评价已经完成，请大家将绩效表打印签字后提交至人资行政部。&#10;时间截止：7月15日15:00前" style="font-family:var(--font-mono,monospace); font-size:13px; line-height:1.6;"></textarea>
-        <span class="text-sm text-tertiary">系统会自动规范化标题语法（##标题 → ## 标题）。</span>
+        <label class="form-label">消息内容（所见即所得编辑，自动转为企业微信 markdown 发送）</label>
+        <div class="wysiwyg-toolbar">
+          <button type="button" class="wys-btn" onclick="Admin.wecomExec('formatBlock','H1')" title="一级标题">H1</button>
+          <button type="button" class="wys-btn" onclick="Admin.wecomExec('formatBlock','H2')" title="二级标题">H2</button>
+          <button type="button" class="wys-btn" onclick="Admin.wecomExec('formatBlock','H3')" title="三级标题">H3</button>
+          <span class="wys-sep"></span>
+          <button type="button" class="wys-btn" onclick="Admin.wecomExec('bold')" title="加粗"><b>B</b></button>
+          <button type="button" class="wys-btn" onclick="Admin.wecomExec('italic')" title="斜体"><i>I</i></button>
+          <span class="wys-sep"></span>
+          <button type="button" class="wys-btn" onclick="Admin.wecomExec('formatBlock','BLOCKQUOTE')" title="引用">❝ 引用</button>
+          <button type="button" class="wys-btn" onclick="Admin.wecomExec('insertUnorderedList')" title="无序列表">• 列表</button>
+          <button type="button" class="wys-btn" onclick="Admin.wecomExec('insertOrderedList')" title="有序列表">1. 列表</button>
+          <span class="wys-sep"></span>
+          <button type="button" class="wys-btn" onclick="Admin.wecomInsertLink()" title="插入链接">🔗 链接</button>
+          <button type="button" class="wys-btn" onclick="Admin.wecomTogglePreview()" title="预览/编辑切换">👁 预览</button>
+        </div>
+        <div id="wecomEditor" class="wysiwyg-editor" contenteditable="true">${defaultHTML}</div>
+        <div id="wecomPreview" class="wysiwyg-preview" style="display:none;"></div>
+        <span class="text-sm text-tertiary">工具栏支持标题/加粗/斜体/引用/列表/链接；点「👁 预览」可查看企微渲染效果，发送时自动转为 markdown。</span>
       </div>
     `;
     App.showModal('发送消息到企微群', html, `
@@ -2846,22 +2882,186 @@ const Admin = (function () {
     });
   }
 
+  // ===== 企微消息所见即所得编辑器 =====
+  function wecomExec(cmd, val) {
+    const ed = document.getElementById('wecomEditor');
+    if (ed) ed.focus();
+    try { document.execCommand(cmd, false, val || null); } catch (e) {}
+  }
+
+  function wecomInsertLink() {
+    const url = window.prompt('请输入链接地址（http:// 或 https://）：', 'https://');
+    if (!url) return;
+    const ed = document.getElementById('wecomEditor');
+    if (ed) ed.focus();
+    try { document.execCommand('createLink', false, url); } catch (e) {}
+  }
+
+  function wecomTogglePreview() {
+    const ed = document.getElementById('wecomEditor');
+    const pv = document.getElementById('wecomPreview');
+    if (!ed || !pv) return;
+    if (pv.style.display === 'none') {
+      const md = htmlToWecomMarkdown(ed.innerHTML);
+      pv.innerHTML = wecomMarkdownToHtml(md);
+      pv.style.display = 'block';
+      ed.style.display = 'none';
+    } else {
+      pv.style.display = 'none';
+      ed.style.display = 'block';
+    }
+  }
+
+  // 行内元素转 markdown
+  function wecomInline(node) {
+    let out = '';
+    node.childNodes.forEach(function(child) {
+      if (child.nodeType === 3) { out += child.textContent; return; }
+      if (child.nodeType !== 1) return;
+      const tag = child.tagName;
+      const txt = wecomInline(child);
+      if (tag === 'STRONG' || tag === 'B') out += '**' + txt + '**';
+      else if (tag === 'EM' || tag === 'I') out += '*' + txt + '*';
+      else if (tag === 'A') {
+        const href = child.getAttribute('href') || '';
+        out += '[' + txt + '](' + href + ')';
+      } else if (tag === 'FONT') {
+        const color = child.getAttribute('color') || '';
+        out += color ? '<font color="' + color + '">' + txt + '</font>' : txt;
+      } else if (tag === 'BR') out += '\n';
+      else out += txt;
+    });
+    return out;
+  }
+
+  // 块级元素转 markdown
+  function wecomBlockToMd(node) {
+    if (node.nodeType === 3) return node.textContent;
+    if (node.nodeType !== 1) return '';
+    const tag = node.tagName;
+    if (tag === 'H1') return '# ' + wecomInline(node) + '\n';
+    if (tag === 'H2') return '## ' + wecomInline(node) + '\n';
+    if (tag === 'H3') return '### ' + wecomInline(node) + '\n';
+    if (tag === 'H4') return '#### ' + wecomInline(node) + '\n';
+    if (tag === 'H5') return '##### ' + wecomInline(node) + '\n';
+    if (tag === 'H6') return '###### ' + wecomInline(node) + '\n';
+    if (tag === 'BLOCKQUOTE') {
+      const inner = wecomChildrenToMd(node);
+      return inner.split('\n').filter(function(l) { return l.trim().length; }).map(function(l) { return '> ' + l; }).join('\n') + '\n';
+    }
+    if (tag === 'UL') {
+      return Array.prototype.map.call(node.children, function(li) { return '- ' + wecomInline(li); }).join('\n') + '\n';
+    }
+    if (tag === 'OL') {
+      return Array.prototype.map.call(node.children, function(li, i) { return (i + 1) + '. ' + wecomInline(li); }).join('\n') + '\n';
+    }
+    if (tag === 'P' || tag === 'DIV') return wecomInline(node) + '\n';
+    if (tag === 'BR') return '\n';
+    return wecomInline(node);
+  }
+
+  function wecomChildrenToMd(node) {
+    let out = '';
+    node.childNodes.forEach(function(child) {
+      if (child.nodeType === 3) { out += child.textContent; return; }
+      if (child.nodeType !== 1) return;
+      const tag = child.tagName;
+      if (['H1','H2','H3','H4','H5','H6','BLOCKQUOTE','UL','OL','P','DIV'].indexOf(tag) >= 0) {
+        out += wecomBlockToMd(child);
+      } else if (tag === 'BR') {
+        out += '\n';
+      } else {
+        out += wecomInline(child);
+      }
+    });
+    return out;
+  }
+
+  function htmlToWecomMarkdown(html) {
+    const tmp = document.createElement('div');
+    tmp.innerHTML = html || '';
+    const lines = [];
+    tmp.childNodes.forEach(function(child) {
+      if (child.nodeType === 3) {
+        const t = child.textContent.trim();
+        if (t) lines.push(t);
+        return;
+      }
+      if (child.nodeType !== 1) return;
+      const tag = child.tagName;
+      if (['H1','H2','H3','H4','H5','H6','BLOCKQUOTE','UL','OL','P','DIV'].indexOf(tag) >= 0) {
+        lines.push(wecomBlockToMd(child));
+      } else if (tag === 'BR') {
+        // skip
+      } else {
+        lines.push(wecomInline(child));
+      }
+    });
+    return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+  }
+
+  // markdown -> HTML（用于预览近似效果）
+  function wecomInlineMd(s) {
+    return s
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.+?)\*/g, '<em>$1</em>')
+      .replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank">$1</a>')
+      .replace(/<font color="(.+?)">(.*?)<\/font>/g, '<font color="$1">$2</font>');
+  }
+  function wecomMarkdownToHtml(md) {
+    const lines = (md || '').split('\n');
+    let html = '';
+    let inQuote = false, inUl = false, inOl = false;
+    function closeLists() {
+      if (inUl) { html += '</ul>'; inUl = false; }
+      if (inOl) { html += '</ol>'; inOl = false; }
+      if (inQuote) { html += '</blockquote>'; inQuote = false; }
+    }
+    lines.forEach(function(line) {
+      const t = line.trim();
+      if (!t) { closeLists(); return; }
+      let m;
+      if (m = t.match(/^(#{1,6})\s+(.*)$/)) {
+        closeLists();
+        const lv = m[1].length;
+        html += '<h' + lv + '>' + wecomInlineMd(m[2]) + '</h' + lv + '>';
+      } else if (m = t.match(/^>\s?(.*)$/)) {
+        if (!inQuote) { closeLists(); html += '<blockquote>'; inQuote = true; }
+        html += '<div>' + wecomInlineMd(m[1]) + '</div>';
+      } else if (m = t.match(/^[-*]\s+(.*)$/)) {
+        if (!inUl) { closeLists(); html += '<ul>'; inUl = true; }
+        if (inQuote) { html += '</blockquote>'; inQuote = false; }
+        html += '<li>' + wecomInlineMd(m[1]) + '</li>';
+      } else if (m = t.match(/^\d+\.\s+(.*)$/)) {
+        if (!inOl) { closeLists(); html += '<ol>'; inOl = true; }
+        if (inQuote) { html += '</blockquote>'; inQuote = false; }
+        html += '<li>' + wecomInlineMd(m[1]) + '</li>';
+      } else {
+        closeLists();
+        html += '<p>' + wecomInlineMd(t) + '</p>';
+      }
+    });
+    closeLists();
+    return html;
+  }
+
   function sendWecomMessage() {
     const hookEl = document.getElementById('wecomHook');
-    const msgEl = document.getElementById('wecomMsg');
-    if (!hookEl || !msgEl) return;
+    const edEl = document.getElementById('wecomEditor');
+    if (!hookEl || !edEl) return;
     const url = (hookEl.value || '').trim();
-    const content = (msgEl.value || '').trim();
+    const plain = (edEl.textContent || '').trim();
     if (!url) { App.toast('请填写 Webhook 地址', 'error'); return; }
     if (!/^https?:\/\/.+/i.test(url)) {
       App.toast('Webhook 地址格式不正确（需以 http:// 或 https:// 开头）', 'error'); return;
     }
-    if (!content) { App.toast('消息内容不能为空', 'error'); return; }
-    // 自动修正 markdown 标题语法（如 ##标题 -> ## 标题），确保企微能正确解析
-    const normalizedContent = normalizeMarkdown(content);
-    // 保存 Webhook（带时间戳，跨云端合并时新的胜出）
+    if (!plain) { App.toast('消息内容不能为空', 'error'); return; }
+    // 编辑器 HTML -> 企微 markdown，再做标题空格规范化
+    let content = htmlToWecomMarkdown(edEl.innerHTML);
+    content = normalizeMarkdown(content);
+    if (!content.trim()) { App.toast('消息内容不能为空', 'error'); return; }
     DB.setSetting('wecomWebhook', { url: url, _updatedAt: Date.now() });
-    const payload = { msgtype: 'markdown', markdown: { content: normalizedContent } };
+    const payload = { msgtype: 'markdown', markdown: { content: content } };
     // 企业微信 Webhook 无 CORS 响应头：用 no-cors + text/plain 盲发（跳过预检，读不到返回体）
     fetch(url, {
       method: 'POST',
@@ -4187,6 +4387,9 @@ const Admin = (function () {
     saveCalibration,
     onStatsMultiSelectChange,
     openWecomSend,
+    wecomExec,
+    wecomInsertLink,
+    wecomTogglePreview,
     sendWecomMessage,
     saveWecomHook,
     exportStats,
