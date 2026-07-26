@@ -241,21 +241,50 @@ const DB = (function () {
         }
         continue;
       }
-      // 员工表以云端为权威：登录依赖账号密码，必须保证云端正确密码能纠正本地脏数据
-      // （例如本地曾改过密码导致 _updatedAt 较新而永久优先云端）。云端有则用云端，
-      // 仅把本地存在而云端未同步的记录作为补充保留，避免丢失本地新增员工。
+      // 员工表：按 _updatedAt 合并，确保本地修改（如上级主管）能被保存到云端；
+      // 若双方都无 _updatedAt（首次同步/种子数据），则以云端为准，避免本地脏种子覆盖云端真实数据。
       if (table === 'employees') {
-        var empResult = (cloud[table] || []).filter(function(it) {
-          return !(it && it.id && mergedDeleted[table] && mergedDeleted[table][it.id]);
+        if (!result[table]) result[table] = [];
+        var cloudEmpMap = {};
+        (cloud[table] || []).forEach(function(it) { if (it && it.id) cloudEmpMap[it.id] = it; });
+        var seenEmpIds = {};
+        result[table] = result[table].filter(function(localItem) {
+          if (!localItem || !localItem.id) return true;
+          seenEmpIds[localItem.id] = true;
+          // 云端清理后，本地记录不存在于云端 → 已删除的种子/废弃数据，清除
+          if (shouldClean && !cloudEmpMap[localItem.id]) return false;
+          return true;
+        }).map(function(localItem) {
+          if (!localItem || !localItem.id) return localItem;
+          var cloudItem = cloudEmpMap[localItem.id];
+          if (!cloudItem) return localItem; // 仅本地有，保留
+          var localTime = localItem._updatedAt || 0;
+          var cloudTime = cloudItem._updatedAt || 0;
+          var merged;
+          if (localTime > 0 && cloudTime > 0) {
+            merged = localTime >= cloudTime ? JSON.parse(JSON.stringify(localItem)) : JSON.parse(JSON.stringify(cloudItem));
+          } else if (localTime > 0 && cloudTime === 0) {
+            merged = JSON.parse(JSON.stringify(localItem));
+          } else if (cloudTime > 0 && localTime === 0) {
+            merged = JSON.parse(JSON.stringify(cloudItem));
+          } else {
+            merged = JSON.parse(JSON.stringify(cloudItem)); // 都无时间戳时云端优先
+          }
+          return merged;
         });
-        var empCloudIds = {};
-        empResult.forEach(function(it) { if (it && it.id) empCloudIds[it.id] = true; });
-        (result[table] || []).forEach(function(localItem) {
-          if (localItem && localItem.id && !empCloudIds[localItem.id] && !(mergedDeleted[table] && mergedDeleted[table][localItem.id])) {
-            empResult.push(localItem);
+        // 添加仅在云端存在的记录（跳过已删除的）
+        (cloud[table] || []).forEach(function(cloudItem) {
+          if (cloudItem && cloudItem.id && !seenEmpIds[cloudItem.id]) {
+            if (mergedDeleted[table] && mergedDeleted[table][cloudItem.id]) return;
+            result[table].push(JSON.parse(JSON.stringify(cloudItem)));
           }
         });
-        result[table] = empResult;
+        // 剔除被标记删除的记录
+        if (mergedDeleted[table]) {
+          result[table] = result[table].filter(function(item) {
+            return !(item && item.id && mergedDeleted[table][item.id]);
+          });
+        }
         continue;
       }
       if (!result[table]) {
