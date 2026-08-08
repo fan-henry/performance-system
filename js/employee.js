@@ -204,6 +204,31 @@ const Employee = (function () {
         refreshedTask = DB.getById('assessmentTasks', taskId);
       }
     }
+
+    // 兜底2：岗位也无指标时，从该员工上个周期的考核任务继承指标配置
+    if (refreshedTask.indicators.length === 0) {
+      const prevTasks = DB.getAll('assessmentTasks')
+        .filter(t => t.employeeId === user.id && t.cycle !== refreshedTask.cycle)
+        .filter(t => t.indicators && t.indicators.length > 0)
+        .sort((a, b) => String(b.cycle || '').localeCompare(String(a.cycle || '')));
+      if (prevTasks.length > 0) {
+        const inherited = prevTasks[0];
+        const newIndicators = (inherited.indicators || []).map(ind => ({
+          indicatorId: ind.indicatorId,
+          weight: ind.weight || 0,
+          positionType: ind.positionType || 'primary',
+          targetValue: '', targetNum: 100, actualValue: '', actualNum: null,
+          completionRate: null, description: '', selfScore: null, supervisorScore: null,
+        }));
+        DB.update('assessmentTasks', taskId, {
+          indicators: newIndicators,
+          primaryWeight: inherited.primaryWeight != null ? inherited.primaryWeight : 100,
+          concurrentWeight: inherited.concurrentWeight != null ? inherited.concurrentWeight : 0,
+        });
+        refreshedTask = DB.getById('assessmentTasks', taskId);
+      }
+    }
+
     const plan = DB.getById('assessmentPlans', refreshedTask.planId);
     const dept = DB.getById('departments', user.deptId);
 
