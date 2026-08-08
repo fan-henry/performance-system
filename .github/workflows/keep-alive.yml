@@ -1,0 +1,28 @@
+name: Keep Supabase Alive
+
+# 防止 Supabase 免费项目因14天无活跃连接而自动暂停
+# 每7天自动发一次请求"摸"一下数据库，让它保持活跃
+on:
+  schedule:
+    # 每周三 UTC 02:00 运行（北京时间约 10:00），间隔远小于14天
+    - cron: "0 2 * * 3"
+  workflow_dispatch:  # 允许手动在 Actions 页面点击运行
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST API
+        run: |
+          echo "Pinging Supabase to keep project active..."
+          HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X GET \
+            -H "apikey: sb_publishable_BAR0ksrdYF9ga-fSp-MSiw_f1eVbWTe" \
+            -H "Authorization: Bearer sb_publishable_BAR0ksrdYF9ga-fSp-MSiw_f1eVbWTe" \
+            "https://teaprkizzoxvsdytayhf.supabase.co/rest/v1/pms_data?id=eq.1&select=id")
+          echo "Supabase response code: $HTTP_CODE"
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "OK: Supabase is active"
+          else
+            echo "WARN: Unexpected response $HTTP_CODE"
+          fi
