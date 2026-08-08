@@ -1609,7 +1609,7 @@ const Admin = (function () {
         <div class="form-group">
           <label class="form-label">考核指标设置</label>
           <div class="alert alert-warning">
-            <span>系统将根据员工岗位关联的推荐指标自动生成考核指标项，权重默认均分。生成后可逐人调整。</span>
+            <span>系统将优先继承该员工<strong>上个周期</strong>已配置的考核指标及权重，无需重新设置；若上周期无数据则按岗位关联推荐指标生成（权重默认均分）。生成后员工可在确认前自行调整。</span>
           </div>
         </div>
       </form>
@@ -1640,21 +1640,52 @@ const Admin = (function () {
       if (existing) return;
 
       const emp = DB.getById('employees', empId);
-      const pos = DB.getById('positions', emp.positionId);
-      let indicatorIds = pos && pos.indicatorIds && pos.indicatorIds.length > 0 ? pos.indicatorIds : [];
-      // 岗位无关联指标时，尝试从员工个人配置（localStorage）获取
-      if (indicatorIds.length === 0) {
-        const savedConfig = JSON.parse(localStorage.getItem('pms_indicator_config_' + empId) || 'null');
-        if (savedConfig) {
-          const cfgArr = Array.isArray(savedConfig) ? savedConfig : (savedConfig.primary || []);
-          indicatorIds = cfgArr.map(ind => ind.id);
-        }
-      }
-      const weight = Math.floor(100 / indicatorIds.length);
-      const lastWeight = 100 - weight * (indicatorIds.length - 1);
 
-      const indicators = indicatorIds.map((indId, i) => {
-        return {
+      // 优先级1：从上个周期的考核任务继承指标配置（含权重、兼任岗位），员工可在确认前自行调整
+      let inheritedTask = null;
+      {
+        const prevTasks = DB.getAll('assessmentTasks')
+          .filter(t => t.employeeId === empId && t.cycle !== cycle)
+          .filter(t => t.indicators && t.indicators.length > 0)
+          .sort((a, b) => String(b.cycle || '').localeCompare(String(a.cycle || '')));
+        if (prevTasks.length > 0) inheritedTask = prevTasks[0];
+      }
+
+      let indicators = [];
+      let primaryWeight = 100;
+      let concurrentWeight = 0;
+
+      if (inheritedTask) {
+        // 直接继承上个周期已配置好的指标，仅保留 indicatorId/weight/positionType，评分字段重置为新周期初始值
+        indicators = (inheritedTask.indicators || []).map(ind => ({
+          indicatorId: ind.indicatorId,
+          weight: ind.weight || 0,
+          positionType: ind.positionType || 'primary',
+          targetValue: '',
+          targetNum: 100,
+          actualValue: '',
+          actualNum: null,
+          completionRate: null,
+          description: '',
+          selfScore: null,
+          supervisorScore: null,
+        }));
+        primaryWeight = inheritedTask.primaryWeight != null ? inheritedTask.primaryWeight : 100;
+        concurrentWeight = inheritedTask.concurrentWeight != null ? inheritedTask.concurrentWeight : 0;
+      } else {
+        // 优先级2/3：岗位关联指标 → 员工个人配置（localStorage）
+        const pos = DB.getById('positions', emp.positionId);
+        let indicatorIds = pos && pos.indicatorIds && pos.indicatorIds.length > 0 ? pos.indicatorIds : [];
+        if (indicatorIds.length === 0) {
+          const savedConfig = JSON.parse(localStorage.getItem('pms_indicator_config_' + empId) || 'null');
+          if (savedConfig) {
+            const cfgArr = Array.isArray(savedConfig) ? savedConfig : (savedConfig.primary || []);
+            indicatorIds = cfgArr.map(ind => ind.id);
+          }
+        }
+        const weight = Math.floor(100 / indicatorIds.length);
+        const lastWeight = 100 - weight * (indicatorIds.length - 1);
+        indicators = indicatorIds.map((indId, i) => ({
           indicatorId: indId,
           weight: i === indicatorIds.length - 1 ? lastWeight : weight,
           positionType: 'primary',
@@ -1666,10 +1697,42 @@ const Admin = (function () {
           description: '',
           selfScore: null,
           supervisorScore: null,
-        };
-      });
+        }));
 
-      // 兼任岗位指标
+        // 兼任岗位指标
+        if (emp.concurrentPositionId && emp.concurrentWeight > 0) {
+          const concPos = DB.getById('positions', emp.concurrentPositionId);
+          let concIndicatorIds = concPos && concPos.indicatorIds && concPos.indicatorIds.length > 0 ? concPos.indicatorIds : [];
+          if (concIndicatorIds.length === 0) {
+            const savedConfig = JSON.parse(localStorage.getItem('pms_indicator_config_' + empId) || 'null');
+            if (savedConfig && savedConfig.concurrent) {
+              concIndicatorIds = savedConfig.concurrent.map(ind => ind.id);
+            }
+          }
+          if (concIndicatorIds.length > 0) {
+            const concWeight = Math.floor(100 / concIndicatorIds.length);
+            const concLastWeight = 100 - concWeight * (concIndicatorIds.length - 1);
+            concIndicatorIds.forEach((indId, i) => {
+              indicators.push({
+                indicatorId: indId,
+                weight: i === concIndicatorIds.length - 1 ? concLastWeight : concWeight,
+                positionType: 'concurrent',
+                targetValue: '',
+                targetNum: 100,
+                actualValue: '',
+                actualNum: null,
+                completionRate: null,
+                description: '',
+                selfScore: null,
+                supervisorScore: null,
+              });
+            });
+            primaryWeight = 100 - emp.concurrentWeight;
+            concurrentWeight = emp.concurrentWeight;
+          }
+        }
+      }
+
       const taskData = {
         id: DB.genId('T'),
         planId,
@@ -1679,8 +1742,8 @@ const Admin = (function () {
         confirmTime: null,
         selfEvalTime: null,
         indicators,
-        primaryWeight: 100,
-        concurrentWeight: 0,
+        primaryWeight,
+        concurrentWeight,
         selfTotalScore: null,
         supervisorTotalScore: null,
         finalScore: null,
@@ -1690,39 +1753,6 @@ const Admin = (function () {
         hrComment: '',
         calibrated: false,
       };
-
-      if (emp.concurrentPositionId && emp.concurrentWeight > 0) {
-        const concPos = DB.getById('positions', emp.concurrentPositionId);
-        let concIndicatorIds = concPos && concPos.indicatorIds && concPos.indicatorIds.length > 0 ? concPos.indicatorIds : [];
-        // 兼任岗位也无关联指标时，从个人配置获取
-        if (concIndicatorIds.length === 0) {
-          const savedConfig = JSON.parse(localStorage.getItem('pms_indicator_config_' + empId) || 'null');
-          if (savedConfig && savedConfig.concurrent) {
-            concIndicatorIds = savedConfig.concurrent.map(ind => ind.id);
-          }
-        }
-        if (concIndicatorIds.length > 0) {
-          const concWeight = Math.floor(100 / concIndicatorIds.length);
-          const concLastWeight = 100 - concWeight * (concIndicatorIds.length - 1);
-          concIndicatorIds.forEach((indId, i) => {
-            indicators.push({
-              indicatorId: indId,
-              weight: i === concIndicatorIds.length - 1 ? concLastWeight : concWeight,
-              positionType: 'concurrent',
-              targetValue: '',
-              targetNum: 100,
-              actualValue: '',
-              actualNum: null,
-              completionRate: null,
-              description: '',
-              selfScore: null,
-              supervisorScore: null,
-            });
-          });
-          taskData.primaryWeight = 100 - emp.concurrentWeight;
-          taskData.concurrentWeight = emp.concurrentWeight;
-        }
-      }
 
       DB.insert('assessmentTasks', taskData);
       count++;
