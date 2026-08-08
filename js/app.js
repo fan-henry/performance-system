@@ -24,6 +24,10 @@ const App = (function () {
       sessionStorage.setItem('pms_session', JSON.stringify(user));
       DB.log(user.name, '登录', `用户 ${user.name}(${user.empNo}) 登录系统`);
       renderApp();
+      // 登录后强制刷新云端数据，确保新设备/跨设备能拿到最新考核任务
+      DB.refreshFromCloud().then(function() {
+        App.refreshAfterSync();
+      });
       return { success: true };
     }
     return { success: false, message: '账号或密码错误，或账号已停用' };
