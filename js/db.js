@@ -380,10 +380,48 @@ const DB = (function () {
     return value;
   }
 
+  // 导出全量数据为可下载的备份对象（含元数据）
+  function exportAll() {
+    const data = load();
+    return {
+      _meta: {
+        app: 'performance-system',
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        exportedBy: (typeof App !== 'undefined' && App.currentUser && App.currentUser.name) || 'unknown'
+      },
+      data: JSON.parse(JSON.stringify(data))
+    };
+  }
+
+  // 从备份对象恢复全量数据。payload 可为 {data:...} 或直接为 data 对象
+  function importAll(payload) {
+    let incoming = payload;
+    if (payload && payload.data && typeof payload.data === 'object') {
+      incoming = payload.data;
+    }
+    if (!incoming || typeof incoming !== 'object') {
+      throw new Error('备份文件格式不正确');
+    }
+    const requiredKeys = ['employees', 'assessmentTasks', 'departments', 'positions'];
+    const missing = requiredKeys.filter(k => !(k in incoming));
+    if (missing.length > 0) {
+      throw new Error('备份文件缺少必要数据表: ' + missing.join(', '));
+    }
+    cache = JSON.parse(JSON.stringify(incoming));
+    // 恢复备份时清除删除标记，避免被删数据被 _deleted 再次屏蔽
+    if (cache.settings && cache.settings._deleted) {
+      cache.settings._deleted = {};
+    }
+    save();
+    return true;
+  }
+
   return {
     load, save, reset, genId, init, refreshFromCloud,
     getAll, getById, insert, update, remove, log,
     getSetting, setSetting,
+    exportAll, importAll,
     get data() { return load(); }
   };
 })();
