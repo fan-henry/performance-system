@@ -252,8 +252,8 @@ const DB = (function () {
         result[table] = result[table].filter(function(localItem) {
           if (!localItem || !localItem.id) return true;
           seenEmpIds[localItem.id] = true;
-          // 云端清理后，本地记录不存在于云端 → 已删除的种子/废弃数据，清除
-          if (shouldClean && !cloudEmpMap[localItem.id]) return false;
+          // 注意：不再以“云端没有”作为删除本地记录的依据（避免云端残缺时误删本地完整数据）。
+          // 仅通过 settings._deleted 删除标记进行显式删除（用户主动删除才生效）。
           return true;
         }).map(function(localItem) {
           if (!localItem || !localItem.id) return localItem;
@@ -300,10 +300,8 @@ const DB = (function () {
       result[table] = result[table].filter(function(localItem) {
         if (!localItem || !localItem.id) return true;
         seenIds[localItem.id] = true;
-        // 云端清理后，本地记录不存在于云端 → 已删除的种子/废弃数据，清除
-        if (shouldClean && !cloudMap[localItem.id]) {
-          return false; // 删除此条（云端已无此记录，说明已被清理）
-        }
+        // 注意：不再以“云端没有”作为删除本地记录的依据（避免云端残缺时误删本地完整数据）。
+        // 仅通过 settings._deleted 删除标记进行显式删除（用户主动删除才生效）。
         return true; // 保留，后续替换为更新版本
       }).map(function(localItem) {
         if (!localItem || !localItem.id) return localItem;
@@ -351,6 +349,8 @@ const DB = (function () {
         load(); // 确保本地 cache 已加载
         cache = mergeData(cloudData, cache, cloudEpoch); // 传递 cloudEpoch 以支持数据清理同步
         localStorage.setItem(STORAGE_KEY, JSON.stringify(cache));
+        // 合并后如果本地比云端更完整（本地有而云端缺失的记录被保留），立即回写云端，修复残缺数据
+        save();
         return cache;
       }
     } catch(e) { console.warn("Cloud refresh failed:", e.message); }
