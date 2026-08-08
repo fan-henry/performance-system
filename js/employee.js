@@ -161,14 +161,51 @@ const Employee = (function () {
   function confirmPlan(taskId) {
     const task = DB.getById('assessmentTasks', taskId);
     if (!task || task.status !== 'pending_confirm') return;
-    // 先同步个人指标配置，确保岗位无关联指标时也能显示已配置的指标
+    // 先同步个人指标配置（localStorage 已保存的配置 → 写入 task.indicators）
     syncTaskIndicators();
     // 重新读取更新后的task
-    const refreshedTask = DB.getById('assessmentTasks', taskId);
-    const plan = DB.getById('assessmentPlans', refreshedTask.planId);
+    let refreshedTask = DB.getById('assessmentTasks', taskId);
     const user = DB.getById('employees', refreshedTask.employeeId);
-    const dept = DB.getById('departments', user.deptId);
     const pos = DB.getById('positions', user.positionId);
+
+    // 兜底：如果同步后仍无指标，从岗位关联指标自动带出（避免用户未手动保存过配置时显示空白）
+    if (refreshedTask.indicators.length === 0 && pos && pos.indicatorIds && pos.indicatorIds.length > 0) {
+      const posIndicators = pos.indicatorIds.map(id => DB.getById('indicators', id)).filter(Boolean);
+      if (posIndicators.length > 0) {
+        const hasConcurrent = user.concurrentPositionId && user.concurrentWeight > 0;
+        const concPos = hasConcurrent ? DB.getById('positions', user.concurrentPositionId) : null;
+        const concIndicators = (concPos && concPos.indicatorIds)
+          ? concPos.indicatorIds.map(id => DB.getById('indicators', id)).filter(Boolean)
+          : [];
+
+        const newIndicators = posIndicators.map((ind, i, arr) => ({
+          indicatorId: ind.id,
+          weight: Math.floor(100 / arr.length) + (i === arr.length - 1 ? 100 - Math.floor(100 / arr.length) * arr.length : 0),
+          positionType: 'primary',
+          targetValue: '', targetNum: 100, actualValue: '', actualNum: null,
+          completionRate: null, description: '', selfScore: null, supervisorScore: null,
+        }));
+        if (hasConcurrent && concIndicators.length > 0) {
+          concIndicators.forEach((ind, i, arr) => {
+            newIndicators.push({
+              indicatorId: ind.id,
+              weight: Math.floor(100 / arr.length) + (i === arr.length - 1 ? 100 - Math.floor(100 / arr.length) * arr.length : 0),
+              positionType: 'concurrent',
+              targetValue: '', targetNum: 100, actualValue: '', actualNum: null,
+              completionRate: null, description: '', selfScore: null, supervisorScore: null,
+            });
+          });
+        }
+        DB.update('assessmentTasks', taskId, {
+          indicators: newIndicators,
+          primaryWeight: hasConcurrent ? (100 - user.concurrentWeight) : 100,
+          concurrentWeight: hasConcurrent ? user.concurrentWeight : 0,
+        });
+        refreshedTask = DB.getById('assessmentTasks', taskId);
+      }
+    }
+    const plan = DB.getById('assessmentPlans', refreshedTask.planId);
+    const dept = DB.getById('departments', user.deptId);
 
     let html = `
       <div class="alert alert-info">
@@ -578,17 +615,39 @@ const Employee = (function () {
   function syncTaskIndicators() {
     const user = App.currentUser;
     const savedConfig = JSON.parse(localStorage.getItem(`pms_indicator_config_${user.id}`) || 'null');
-    if (!savedConfig) return;
 
     const allTasks = DB.getAll('assessmentTasks');
     const pendingTasks = allTasks.filter(t => t.employeeId === user.id && t.status === 'pending_confirm');
     if (pendingTasks.length === 0) return;
 
     const hasConcurrent = user.concurrentPositionId && user.concurrentWeight > 0;
+    const pos = DB.getById('positions', user.positionId);
+    const concPos = hasConcurrent ? DB.getById('positions', user.concurrentPositionId) : null;
 
-    if (hasConcurrent && savedConfig.primary) {
+    // 解析有效指标列表：优先 localStorage 已保存配置，其次岗位关联指标兜底
+    let primaryInds = [], concurrentInds = [];
+
+    if (savedConfig) {
+      if (hasConcurrent && savedConfig.primary) {
+        primaryInds = savedConfig.primary;
+        concurrentInds = savedConfig.concurrent || [];
+      } else {
+        primaryInds = Array.isArray(savedConfig) ? savedConfig : (savedConfig.primary || []);
+      }
+    }
+
+    // 兜底：无已保存配置时，从岗位关联指标自动带出
+    if (primaryInds.length === 0 && pos && pos.indicatorIds && pos.indicatorIds.length > 0) {
+      primaryInds = pos.indicatorIds.map(id => DB.getById('indicators', id)).filter(Boolean);
+    }
+    if (hasConcurrent && concurrentInds.length === 0 && concPos && concPos.indicatorIds && concPos.indicatorIds.length > 0) {
+      concurrentInds = concPos.indicatorIds.map(id => DB.getById('indicators', id)).filter(Boolean);
+    }
+    if (primaryInds.length === 0) return;
+
+    if (hasConcurrent) {
       // 双岗位模式
-      const primaryIndicators = savedConfig.primary.map(ind => ({
+      const primaryIndicators = primaryInds.map(ind => ({
         indicatorId: ind.id,
         weight: ind.weight || 0,
         positionType: 'primary',
@@ -601,7 +660,7 @@ const Employee = (function () {
         selfScore: null,
         supervisorScore: null,
       }));
-      const concurrentIndicators = (savedConfig.concurrent || []).map(ind => ({
+      const concurrentIndicators = concurrentInds.map(ind => ({
         indicatorId: ind.id,
         weight: ind.weight || 0,
         positionType: 'concurrent',
@@ -624,9 +683,7 @@ const Employee = (function () {
       });
     } else {
       // 单岗位模式
-      const inds = Array.isArray(savedConfig) ? savedConfig : (savedConfig.primary || []);
-      if (inds.length === 0) return;
-      const newIndicators = inds.map(ind => ({
+      const newIndicators = primaryInds.map(ind => ({
         indicatorId: ind.id,
         weight: ind.weight || 0,
         positionType: 'primary',
