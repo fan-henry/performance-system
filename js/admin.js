@@ -15,6 +15,7 @@ const Admin = (function () {
       'admin-config': () => renderSystemConfig(container),
       'supervisor-eval': () => renderSupervisorEval(container),
       'hr-review': () => renderHRReview(container),
+      'data-backup': () => renderDataBackup(container),
     };
     (pages[page] || pages['admin-home'])();
   }
@@ -4370,8 +4371,110 @@ const Admin = (function () {
     App.toast('评价提交成功！', 'success');
     renderSupervisorEval(document.getElementById('contentArea'));
   }
+
+  // ========== 数据备份与恢复 ==========
+  function renderDataBackup(container) {
+    const data = DB.data;
+    const stats = {
+      '员工': (data.employees || []).length,
+      '部门': (data.departments || []).length,
+      '岗位': (data.positions || []).length,
+      '指标库': (data.indicators || []).length,
+      '考核方案': (data.assessmentPlans || []).length,
+      '考核任务': (data.assessmentTasks || []).length,
+      '操作日志': (data.logs || []).length,
+    };
+    const statCards = Object.keys(stats).map(k =>
+      `<div class="card" style="padding:14px;text-align:center;">
+        <div style="font-size:24px;font-weight:700;color:#2c5cdc;">${stats[k]}</div>
+        <div style="color:#888;font-size:13px;margin-top:4px;">${k}</div>
+      </div>`
+    ).join('');
+
+    container.innerHTML = `
+      <div style="padding:4px 0 18px;">
+        <h2 style="margin:0 0 6px;">💾 数据备份与恢复</h2>
+        <p style="color:#666;margin:0 0 18px;">定期导出全量数据作为备份；误删或数据异常时，可导入备份文件一键恢复。</p>
+
+        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px;margin-bottom:22px;">
+          ${statCards}
+        </div>
+
+        <div style="display:flex;gap:16px;flex-wrap:wrap;">
+          <div class="card" style="flex:1;min-width:260px;padding:18px;">
+            <h3 style="margin:0 0 8px;">📤 导出备份</h3>
+            <p style="color:#666;font-size:13px;line-height:1.6;margin:0 0 14px;">将当前系统全部数据下载为 JSON 文件。建议每次动重要数据前导出一份存档。</p>
+            <button class="btn btn-primary" onclick="Admin.exportBackup()">立即导出</button>
+          </div>
+          <div class="card" style="flex:1;min-width:260px;padding:18px;">
+            <h3 style="margin:0 0 8px;">📥 导入恢复</h3>
+            <p style="color:#666;font-size:13px;line-height:1.6;margin:0 0 14px;">选择之前导出的备份文件，<b>整体替换</b>当前数据（含误删记录）。恢复后删除标记会被清除。</p>
+            <input type="file" id="backupFile" accept=".json,application/json" class="form-control" />
+            <button class="btn btn-warning" style="margin-top:10px;" onclick="Admin.importBackup()">选择文件后恢复</button>
+          </div>
+        </div>
+
+        <div class="alert alert-warning" style="margin-top:22px;">
+          <span>⚠️ 导入会用备份文件<b>整体覆盖</b>现有数据，此操作不可撤销。恢复前请先点击「导出备份」存一份当前数据，避免覆盖后无法回退。</span>
+        </div>
+      </div>
+    `;
+  }
+
+  function exportBackup() {
+    try {
+      const payload = DB.exportAll();
+      const json = JSON.stringify(payload, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const ts = new Date().toISOString().slice(0, 19).replace(/[:T]/g, '-');
+      a.href = url;
+      a.download = `绩效系统备份_${ts}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      App.toast('备份已导出', 'success');
+    } catch (e) {
+      App.toast('导出失败：' + e.message, 'error');
+    }
+  }
+
+  function importBackup() {
+    const input = document.getElementById('backupFile');
+    if (!input || !input.files || input.files.length === 0) {
+      App.toast('请先选择备份文件', 'error');
+      return;
+    }
+    const file = input.files[0];
+    const reader = new FileReader();
+    reader.onload = function (e) {
+      try {
+        const parsed = JSON.parse(e.target.result);
+        if (!confirm('确定用该备份文件覆盖当前全部数据吗？此操作不可撤销。建议先导出当前数据作为二次备份。')) {
+          return;
+        }
+        DB.importAll(parsed);
+        App.toast('数据恢复成功！正在刷新界面...', 'success');
+        setTimeout(function () {
+          App.init();
+        }, 900);
+      } catch (err) {
+        App.toast('恢复失败：' + err.message, 'error');
+      }
+    };
+    reader.onerror = function () {
+      App.toast('文件读取失败', 'error');
+    };
+    reader.readAsText(file);
+  }
+
   return {
     render,
+    renderDataBackup,
+    exportBackup,
+    importBackup,
     switchOrgTab,
     editDept,
     viewDept,
