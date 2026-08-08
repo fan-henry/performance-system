@@ -173,6 +173,23 @@ const DB = (function () {
     return null;
   }
 
+  // 批量删除（不触发save，供调用方统一保存，避免N次云端操作）
+  function batchRemove(table, ids) {
+    const data = load();
+    const arr = data[table] || [];
+    const idSet = new Set(ids);
+    // 过滤掉要删除的记录
+    data[table] = arr.filter(item => !item || !idSet.has(item.id));
+    // 记录删除标记
+    if (!data.settings) data.settings = {};
+    if (!data.settings._deleted) data.settings._deleted = {};
+    if (!data.settings._deleted[table]) data.settings._deleted[table] = {};
+    ids.forEach(function(id) { data.settings._deleted[table][id] = Date.now(); });
+    // 写回localStorage但不推送云端
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+    cache = data;
+  }
+
   function log(operator, type, detail, ip) {
     const entry = {
       id: genId('L'),
@@ -419,7 +436,7 @@ const DB = (function () {
 
   return {
     load, save, reset, genId, init, refreshFromCloud,
-    getAll, getById, insert, update, remove, log,
+    getAll, getById, insert, update, remove, batchRemove, log,
     getSetting, setSetting,
     exportAll, importAll,
     get data() { return load(); }
