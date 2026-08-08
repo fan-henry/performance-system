@@ -1455,7 +1455,10 @@ const Admin = (function () {
             </select>
           </div>
         </div>
-        <button class="btn btn-primary btn-sm" onclick="Admin.generateTasks()">⚡ 批量生成考核计划</button>
+        <div class="flex gap-2">
+          <button class="btn btn-primary btn-sm" onclick="Admin.generateTasks()">⚡ 批量生成考核计划</button>
+          <button class="btn btn-warning btn-sm" onclick="Admin.batchDeleteTasks()">🗑 批量清理旧任务</button>
+        </div>
       </div>
 
       <div class="stat-grid mb-4">
@@ -1608,6 +1611,12 @@ const Admin = (function () {
           </div>
         </div>
         <div class="form-group">
+          <label class="checkbox-item" style="border:none;padding-left:0;">
+            <input type="checkbox" name="clearOld" value="1" checked>
+            <span>生成前清理所选员工在该方案下的全部未完成旧任务（避免重复/残留，已完成成绩保留）</span>
+          </label>
+        </div>
+        <div class="form-group">
           <label class="form-label">考核指标设置</label>
           <div class="alert alert-warning">
             <span>系统将优先继承该员工<strong>上个周期</strong>已配置的考核指标及权重，无需重新设置；若上周期无数据则按岗位关联推荐指标生成（权重默认均分）。生成后员工可在确认前自行调整。</span>
@@ -1622,6 +1631,37 @@ const Admin = (function () {
     `);
   }
 
+  // 批量清理旧任务：根据当前筛选条件删除"未完成"任务（默认保留已完成的成绩记录）
+  function batchDeleteTasks() {
+    const planFilter = document.getElementById('taskPlanFilter') ? document.getElementById('taskPlanFilter').value : '';
+    const cycleFilter = document.getElementById('taskCycleFilter') ? document.getElementById('taskCycleFilter').value : '';
+    const statusFilter = document.getElementById('taskStatusFilter') ? document.getElementById('taskStatusFilter').value : '';
+
+    let toDelete = DB.getAll('assessmentTasks').filter(t => {
+      if (t.status === 'completed' || t.status === 'calibrated') return false; // 保护已完成成绩
+      if (planFilter && t.planId !== planFilter) return false;
+      if (cycleFilter && t.cycle !== cycleFilter) return false;
+      if (statusFilter && t.status !== statusFilter) return false;
+      return true;
+    });
+
+    if (toDelete.length === 0) {
+      App.toast('当前筛选条件下没有可清理的未完成旧任务', 'info');
+      return;
+    }
+
+    if (!confirm(`确定要删除筛选出的 ${toDelete.length} 条未完成考核任务吗？\n\n已完成的考核成绩不会被删除。此操作不可撤销。`)) {
+      return;
+    }
+
+    const ids = toDelete.map(t => t.id);
+    DB.batchRemove('assessmentTasks', ids);
+    DB.save();
+    App.toast(`已清理 ${ids.length} 条旧任务`, 'success');
+    DB.log(App.currentUser.name, '考核计划', `批量清理旧任务：${ids.length}条`);
+    renderTaskManagement(document.getElementById('contentArea'));
+  }
+
   function doGenerateTasks() {
     const form = document.getElementById('genForm');
     const planId = form.planId.value;
@@ -1634,11 +1674,35 @@ const Admin = (function () {
     if (selectedEmps.length === 0) { App.toast('请选择被考核员工', 'error'); return; }
 
     const plan = DB.getById('assessmentPlans', planId);
+    const clearOld = form.clearOld && form.clearOld.checked;
+    const preClearIds = []; // 生成前需清理的旧任务ID
+    if (clearOld) {
+      // 清理所选员工在该方案下的全部未完成旧任务（除已完成/已校准外），避免重复残留
+      DB.getAll('assessmentTasks').forEach(t => {
+        if (t.planId === planId && selectedEmps.includes(t.employeeId)
+            && t.status !== 'completed' && t.status !== 'calibrated') {
+          preClearIds.push(t.id);
+        }
+      });
+      if (preClearIds.length > 0) {
+        DB.batchRemove('assessmentTasks', preClearIds);
+      }
+    }
     let count = 0;
+    let overwritten = 0;
+    const toOverwriteIds = []; // 收集需要覆盖的旧任务ID
     selectedEmps.forEach(empId => {
-      // 检查是否已存在
+      // 检查是否已存在；若存在则标记删除后重建（支持同周期重新生成）
       const existing = DB.getAll('assessmentTasks').find(t => t.planId === planId && t.employeeId === empId && t.cycle === cycle);
-      if (existing) return;
+      if (existing) {
+        // 只覆盖非已完成的旧任务；已完成的保留不动（避免覆盖历史成绩）
+        if (existing.status !== 'completed' && existing.status !== 'calibrated') {
+          toOverwriteIds.push(existing.id);
+          overwritten++;
+        } else {
+          return; // 已完成/已校准的任务跳过，不重复生成
+        }
+      }
 
       const emp = DB.getById('employees', empId);
 
@@ -1759,12 +1823,21 @@ const Admin = (function () {
       count++;
     });
 
-    // 批量插入完成后统一保存（只触发一次云端同步，避免并发竞争导致任务丢失）
+    // 批量插入完成后，先删除被覆盖的旧任务（避免同一员工同周期出现重复任务）
+    if (toOverwriteIds.length > 0) {
+      DB.batchRemove('assessmentTasks', toOverwriteIds);
+    }
+
+    // 统一保存（只触发一次云端同步，避免并发竞争导致任务丢失）
     DB.save();
 
-    DB.log(App.currentUser.name, '考核计划', `生成考核计划：${plan.name}，共${count}人`);
+    let msg = `成功生成 ${count} 份考核计划`;
+    if (preClearIds.length > 0) msg += `（已清理 ${preClearIds.length} 份旧任务）`;
+    else if (overwritten > 0) msg += `（其中 ${overwritten} 份覆盖了旧任务）`;
+    App.toast(msg, 'success');
+    DB.log(App.currentUser.name, '考核计划', `生成考核计划：${plan.name}，共${count}人` + (preClearIds.length ? `，清理${preClearIds.length}份旧任务` : (overwritten ? `，覆盖${overwritten}份` : '')));
+
     App.closeModal();
-    App.toast(`成功生成 ${count} 份考核计划`, 'success');
     renderTaskManagement(document.getElementById('contentArea'));
   }
 
@@ -4511,6 +4584,7 @@ const Admin = (function () {
     toggleInvertEmployees,
     filterByTag,
     doGenerateTasks,
+    batchDeleteTasks,
     doReturnTask,
     calibrateTask,
     toggleMultiSelect,
