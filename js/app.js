@@ -440,7 +440,7 @@ const App = (function () {
     if (titleEl) titleEl.textContent = pageTitles[page] || page;
 
     // 路由分发
-    if (page.startsWith('admin-') || page === 'supervisor-eval' || page === 'hr-review') {
+    if (page.startsWith('admin-') || page === 'supervisor-eval' || page === 'hr-review' || page === 'data-backup') {
       Admin.render(page, contentArea);
     } else {
       Employee.render(page, contentArea);
