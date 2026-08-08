@@ -5,7 +5,7 @@
 const DB = (function () {
   const STORAGE_KEY = 'pms_data_v11';
   const SUPABASE_URL = 'https://teaprkizzoxvsdytayhf.supabase.co';
-  const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InRlYXBya2l6em94dnNkeXRheWhmIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMwMzYzODYsImV4cCI6MjA5ODYxMjM4Nn0.nR9OJRPuA40w_wESKC9CJruWu4JO6vcIVfmA0GL9Stc';
+  const SUPABASE_ANON_KEY = 'sb_publishable_BAR0ksrdYF9ga-fSp-MSiw_f1eVbWTe';
   let supabaseClient = null;
 
   function getSupabase() {
