@@ -1754,9 +1754,12 @@ const Admin = (function () {
         calibrated: false,
       };
 
-      DB.insert('assessmentTasks', taskData);
+      DB.insert('assessmentTasks', taskData, { noSave: true });
       count++;
     });
+
+    // 批量插入完成后统一保存（只触发一次云端同步，避免并发竞争导致任务丢失）
+    DB.save();
 
     DB.log(App.currentUser.name, '考核计划', `生成考核计划：${plan.name}，共${count}人`);
     App.closeModal();
