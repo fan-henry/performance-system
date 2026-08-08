@@ -298,6 +298,7 @@ const App = (function () {
         { key: 'admin-calibration', label: '绩效校准', icon: '⚖️', badge: getCalibrationPending() },
         { key: 'admin-stats', label: '结果统计与分析', icon: '📈' },
         { key: 'admin-config', label: '系统配置', icon: '⚙️' },
+        { key: 'data-backup', label: '数据备份', icon: '💾' },
         { key: 'self-eval', label: '绩效自评', icon: '✏️', badge: getPendingSelfEvalCount() },
         { key: 'emp-home', label: '我的绩效', icon: '👤' },
         { key: 'result-query', label: '绩效结果查询', icon: '📋' },
@@ -309,6 +310,7 @@ const App = (function () {
         { key: 'admin-home', label: '工作台', icon: '🏠' },
         { key: 'admin-org', label: '组织与人员管理', icon: '🏢' },
         { key: 'admin-config', label: '系统配置', icon: '⚙️' },
+        { key: 'data-backup', label: '数据备份', icon: '💾' },
         { key: 'admin-stats', label: '结果统计与分析', icon: '📈' },
         { key: 'self-eval', label: '绩效自评', icon: '✏️', badge: getPendingSelfEvalCount() },
         { key: 'emp-home', label: '我的绩效', icon: '👤' },
@@ -325,6 +327,7 @@ const App = (function () {
         { key: 'emp-home', label: '我的绩效', icon: '👤' },
         { key: 'result-query', label: '绩效结果查询', icon: '📋' },
         { key: 'print', label: '绩效打印', icon: '🖨️' },
+        { key: 'data-backup', label: '数据备份', icon: '💾' },
       ].filter(m => hasPermission(m.key));
     }
 
@@ -428,6 +431,7 @@ const App = (function () {
       'admin-calibration': '绩效校准',
       'admin-stats': '结果统计与分析',
       'admin-config': '系统配置',
+      'data-backup': '数据备份与恢复',
       'supervisor-eval': '上级评价',
       'hr-review': 'HR审核',
     };
