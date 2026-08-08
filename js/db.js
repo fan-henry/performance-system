@@ -133,13 +133,14 @@ const DB = (function () {
     return (data[table] || []).find(item => item.id === id);
   }
 
-  function insert(table, item) {
+  function insert(table, item, opts) {
+    opts = opts || {};
     const data = load();
     if (!data[table]) data[table] = [];
     if (!item.id) item.id = genId(table.charAt(0).toUpperCase());
     item._updatedAt = Date.now();
     data[table].push(item);
-    save();
+    if (!opts.noSave) save();
     return item;
   }
 
