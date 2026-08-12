@@ -2033,7 +2033,7 @@ const Admin = (function () {
     const workflowNodes = [
       { step: 1, label: '计划确认', status: 'pending_confirm' },
       { step: 2, label: '绩效自评', status: 'pending_self_eval' },
-      { step: 3, label: 'HR审核', status: 'self_evaluated' },
+      { step: 3, label: 'HR审核', status: 'hr_reviewing' },
       { step: 4, label: '上级评价', status: 'hr_reviewed' },
       { step: 5, label: 'HR校准', status: 'supervisor_done' },
       { step: 6, label: '结果确认', status: 'calibrated' },
@@ -2043,7 +2043,8 @@ const Admin = (function () {
     const stepMap = {
       'pending_confirm': 1,
       'confirmed': 1, 'pending_self_eval': 2,
-      'self_evaluated': 3, 'hr_reviewing': 3, 'hr_reviewed': 3,
+      'self_evaluated': 2,
+      'hr_reviewing': 3, 'hr_reviewed': 4,
       'supervisor_evaluating': 4, 'supervisor_done': 4,
       'calibrated': 5,
       'completed': 6,
