@@ -4048,7 +4048,7 @@ const Admin = (function () {
                   step="0.01" min="0" max="999" ${readOnlyAttr} oninput="Admin.onHRCompletionRateChange('${taskId}', ${idx})" style="width:100px;">
               </td>
               <td class="font-bold" id="hr_selfScore_${idx}" style="color:var(--primary);">${ind.selfScore ? ind.selfScore.toFixed(2) : '0.00'}</td>
-              <td class="text-sm" style="max-width:200px; word-wrap:break-word; white-space:pre-wrap;">${ind.description || '-'}</td>
+              <td><textarea class="form-textarea" id="hr_description_${idx}" rows="2" style="min-width:180px;" ${readOnlyAttr} placeholder="完成情况描述">${ind.description || ''}</textarea></td>
             </tr>`;
           }).join('')}
         </tbody>
@@ -4122,6 +4122,8 @@ const Admin = (function () {
       task.indicators[i].actualValue = actualValue;
       task.indicators[i].completionRate = completionRate;
       task.indicators[i].selfScore = selfScore;
+      const descEl = document.getElementById(`hr_description_${i}`);
+      if (descEl) task.indicators[i].description = descEl.value;
     }
 
     const totalScore = App.calcTotalScore(task.indicators, 'selfScore', task.primaryWeight, task.concurrentWeight);
