@@ -4,7 +4,7 @@
 const Employee = (function () {
 
   // HR打印筛选状态
-  let printFilters = { planId: '', deptId: '', keyword: '' };
+  let printFilters = { planId: '', deptId: '', cycle: '', keyword: '' };
   let _printContainer = null;
 
   function render(page, container) {
@@ -1351,6 +1351,13 @@ const Employee = (function () {
           </select>
         </div>
         <div class="form-group" style="margin:0;">
+          <label class="form-label">考核周期</label>
+          <select id="pfCycle" class="form-input" style="min-width:150px;">
+            <option value="">全部周期</option>
+            ${[...new Set(DB.getAll('assessmentTasks').map(t => t.cycle).filter(Boolean))].sort().map(c => `<option value="${c}" ${printFilters.cycle === c ? 'selected' : ''}>${c}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-group" style="margin:0;">
           <label class="form-label">部门</label>
           <select id="pfDept" class="form-input" style="min-width:160px;">
             <option value="">全部部门</option>
@@ -1419,6 +1426,7 @@ const Employee = (function () {
   function getHRPrintableTasks() {
     let tasks = DB.getAll('assessmentTasks').filter(t => ['completed', 'calibrated'].includes(t.status) || t.supervisorTotalScore !== null);
     if (printFilters.planId) tasks = tasks.filter(t => t.planId === printFilters.planId);
+    if (printFilters.cycle) tasks = tasks.filter(t => t.cycle === printFilters.cycle);
     if (printFilters.deptId) tasks = tasks.filter(t => { const e = DB.getById('employees', t.employeeId); return e && e.deptId === printFilters.deptId; });
     if (printFilters.keyword) {
       const kw = printFilters.keyword.trim().toLowerCase();
@@ -1439,16 +1447,18 @@ const Employee = (function () {
   function applyPrintFilter() {
     const planEl = document.getElementById('pfPlan');
     const deptEl = document.getElementById('pfDept');
+    const cycleEl = document.getElementById('pfCycle');
     const kwEl = document.getElementById('pfKeyword');
     printFilters.planId = planEl ? planEl.value : '';
     printFilters.deptId = deptEl ? deptEl.value : '';
+    printFilters.cycle = cycleEl ? cycleEl.value : '';
     printFilters.keyword = kwEl ? kwEl.value : '';
     if (_printContainer) renderPrint(_printContainer);
   }
 
   // HR 重置筛选
   function resetPrintFilter() {
-    printFilters = { planId: '', deptId: '', keyword: '' };
+    printFilters = { planId: '', deptId: '', cycle: '', keyword: '' };
     if (_printContainer) renderPrint(_printContainer);
   }
 
