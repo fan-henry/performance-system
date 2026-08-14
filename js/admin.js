@@ -4214,8 +4214,13 @@ const Admin = (function () {
     });
   }
 
+  // 上级评价列表筛选状态（模块级，onchange 时保留）
+  let supEvalFilters = { planId: '', cycle: '' };
+  let _supEvalContainer = null;
+
   // ========== 上级评价 ==========
   function renderSupervisorEval(container) {
+    _supEvalContainer = container;
     const subordinates = App.getSubordinates();
     const subIds = subordinates.map(e => e.id);
     const tasks = DB.getAll('assessmentTasks').filter(t => subIds.includes(t.employeeId) && t.status === 'hr_reviewed');
@@ -4223,9 +4228,35 @@ const Admin = (function () {
     // 也展示待评价和已评价的
     const allSubTasks = DB.getAll('assessmentTasks').filter(t => subIds.includes(t.employeeId) && ['hr_reviewed', 'supervisor_evaluating', 'supervisor_done', 'calibrated', 'completed'].includes(t.status));
 
+    const plans = DB.getAll('assessmentPlans');
+    const cycles = [...new Set(allSubTasks.map(t => t.cycle))].sort();
+    let displayTasks = allSubTasks;
+    if (supEvalFilters.planId) displayTasks = displayTasks.filter(t => t.planId === supEvalFilters.planId);
+    if (supEvalFilters.cycle) displayTasks = displayTasks.filter(t => t.cycle === supEvalFilters.cycle);
+
     container.innerHTML = `
       <div class="alert alert-info">
         <span>✏️ 对下属员工的自评结果进行评价打分。评分完成后将提交HR审核。</span>
+      </div>
+
+      <div class="card mb-4">
+        <div class="card-body flex gap-3 flex-wrap align-center">
+          <div class="form-group" style="margin:0; min-width:180px;">
+            <label class="form-label">考核方案</label>
+            <select class="form-select" id="supPlanFilter" onchange="Admin.applySupEvalFilter()">
+              <option value="">全部</option>
+              ${plans.map(p => `<option value="${p.id}" ${supEvalFilters.planId === p.id ? 'selected' : ''}>${p.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="form-group" style="margin:0; min-width:160px;">
+            <label class="form-label">考核周期</label>
+            <select class="form-select" id="supCycleFilter" onchange="Admin.applySupEvalFilter()">
+              <option value="">全部</option>
+              ${cycles.map(c => `<option value="${c}" ${supEvalFilters.cycle === c ? 'selected' : ''}>${c}</option>`).join('')}
+            </select>
+          </div>
+          <button class="btn btn-link btn-sm" onclick="Admin.resetSupEvalFilter()">↺ 重置</button>
+        </div>
       </div>
 
       <div class="stat-grid mb-4">
@@ -4235,13 +4266,13 @@ const Admin = (function () {
       </div>
 
       <div class="card">
-        <div class="card-header"><h3>评价列表</h3></div>
+        <div class="card-header"><h3>评价列表（共 ${displayTasks.length} 条）</h3></div>
         <div class="card-body no-pad">
-          ${allSubTasks.length === 0 ? `<div class="empty-state"><div class="icon">📭</div><p>暂无需要评价的考核任务</p></div>` : `
+          ${displayTasks.length === 0 ? `<div class="empty-state"><div class="icon">📭</div><p>暂无需要评价的考核任务</p></div>` : `
             <table class="data-table">
               <thead><tr><th>工号</th><th>姓名</th><th>部门</th><th>考核周期</th><th>自评得分</th><th>上级评分</th><th>状态</th><th>操作</th></tr></thead>
               <tbody>
-                ${allSubTasks.map(t => {
+                ${displayTasks.map(t => {
                   const emp = DB.getById('employees', t.employeeId);
                   const dept = emp ? DB.getById('departments', emp.deptId) : null;
                   return `<tr>
@@ -4263,6 +4294,19 @@ const Admin = (function () {
         </div>
       </div>
     `;
+  }
+
+  function applySupEvalFilter() {
+    const planEl = document.getElementById('supPlanFilter');
+    const cycleEl = document.getElementById('supCycleFilter');
+    supEvalFilters.planId = planEl ? planEl.value : '';
+    supEvalFilters.cycle = cycleEl ? cycleEl.value : '';
+    if (_supEvalContainer) renderSupervisorEval(_supEvalContainer);
+  }
+
+  function resetSupEvalFilter() {
+    supEvalFilters = { planId: '', cycle: '' };
+    if (_supEvalContainer) renderSupervisorEval(_supEvalContainer);
   }
 
   function doSupervisorEval(taskId) {
@@ -4622,6 +4666,8 @@ const Admin = (function () {
     approveHRReview,
     doSupervisorEval,
     calcSupTotal,
-    submitSupervisorEval
+    submitSupervisorEval,
+    applySupEvalFilter,
+    resetSupEvalFilter
   };
 })();
