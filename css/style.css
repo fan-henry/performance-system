@@ -243,6 +243,33 @@ body {
   color: rgba(255,255,255,0.5);
 }
 
+/* 汉堡菜单按钮（默认隐藏，仅移动端显示） */
+.menu-toggle {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 36px; height: 36px;
+  margin-right: 4px;
+  border: none;
+  background: transparent;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--text-primary);
+  cursor: pointer;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.menu-toggle:hover { background: var(--bg-hover); }
+
+/* 移动端侧边栏遮罩 */
+.sidebar-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.45);
+  z-index: 90;
+}
+
 /* 主内容区 */
 .main-area {
   flex: 1;
@@ -665,12 +692,51 @@ weight-input {
 
 /* ===== 响应式 ===== */
 @media (max-width: 768px) {
-  .sidebar { transform: translateX(-100%); }
+  .sidebar {
+    transform: translateX(-100%);
+    width: 80%;
+    max-width: 260px;
+  }
   .sidebar.open { transform: translateX(0); }
+  .sidebar.open ~ .sidebar-overlay { display: block; }
   .main-area { margin-left: 0; }
   .chart-grid { grid-template-columns: 1fr; }
   .stat-grid { grid-template-columns: 1fr; }
   .topbar-left .page-title { font-size: 14px; }
+
+  /* 顶部栏适配 */
+  .topbar { padding: 0 12px; }
+  .topbar-user .user-info { display: none; }
+  .menu-toggle { display: inline-flex; }
+  .topbar-left { flex: 1; min-width: 0; }
+  .page-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+
+  /* 内容区适配 */
+  .content-area { padding: 16px 12px; }
+
+  /* 卡片头部允许换行，避免标题与按钮挤压 */
+  .card-header { flex-wrap: wrap; gap: 8px; }
+  .card-header .btn { margin-left: 0; }
+
+  /* 弹窗底部按钮堆叠占满，便于触屏点击 */
+  .modal-footer { flex-wrap: wrap; }
+  .modal-footer .btn { flex: 1 1 auto; min-width: 120px; }
+
+  /* 筛选栏在窄屏改为单列 */
+  .filter-bar { gap: 8px; }
+  .filter-bar .form-group { flex: 1 1 100%; margin-bottom: 0; }
+  .filter-bar .form-group .form-input,
+  .filter-bar .form-group .form-select { min-width: 0; }
+
+  /* 登录卡片内边距缩小 */
+  .login-card { padding: 32px 24px; }
+
+  /* 步骤条横向滚动，避免溢出 */
+  .steps { flex-wrap: nowrap; overflow-x: auto; padding-bottom: 4px; }
+  .step-line { width: 20px; }
+
+  /* 统计数值略微缩小 */
+  .stat-info .value { font-size: 22px; }
 }
 
 /* ===== 拖拽排序 ===== */
