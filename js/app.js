@@ -179,9 +179,11 @@ const App = (function () {
           </nav>
           <div class="sidebar-footer">© 2026 企业绩效管理系统</div>
         </aside>
+        <div class="sidebar-overlay" onclick="App.toggleSidebar()"></div>
         <div class="main-area">
           <header class="topbar">
             <div class="topbar-left">
+              <button class="menu-toggle" onclick="App.toggleSidebar()" aria-label="打开菜单">☰</button>
               <span class="page-title" id="pageTitle">首页</span>
             </div>
             <div class="topbar-right">
@@ -244,9 +246,11 @@ const App = (function () {
           </nav>
           <div class="sidebar-footer">© 2026 企业绩效管理系统</div>
         </aside>
+        <div class="sidebar-overlay" onclick="App.toggleSidebar()"></div>
         <div class="main-area">
           <header class="topbar">
             <div class="topbar-left">
+              <button class="menu-toggle" onclick="App.toggleSidebar()" aria-label="打开菜单">☰</button>
               <span class="page-title" id="pageTitle">首页</span>
             </div>
             <div class="topbar-right">
@@ -355,9 +359,11 @@ const App = (function () {
           </nav>
           <div class="sidebar-footer">© 2026 企业绩效管理系统</div>
         </aside>
+        <div class="sidebar-overlay" onclick="App.toggleSidebar()"></div>
         <div class="main-area">
           <header class="topbar">
             <div class="topbar-left">
+              <button class="menu-toggle" onclick="App.toggleSidebar()" aria-label="打开菜单">☰</button>
               <span class="page-title" id="pageTitle">工作台</span>
             </div>
             <div class="topbar-right">
@@ -412,6 +418,8 @@ const App = (function () {
     document.querySelectorAll('.nav-item').forEach(item => {
       item.classList.toggle('active', item.dataset.page === page);
     });
+    // 移动端：点击导航后自动收起侧边栏
+    document.querySelectorAll('.sidebar').forEach(s => s.classList.remove('open'));
 
     const contentArea = document.getElementById('contentArea');
     if (!contentArea) return;
@@ -445,6 +453,12 @@ const App = (function () {
     } else {
       Employee.render(page, contentArea);
     }
+  }
+
+  // 移动端侧边栏开关
+  function toggleSidebar() {
+    const sb = document.querySelector('.sidebar');
+    if (sb) sb.classList.toggle('open');
   }
 
   // ========== 工具函数 ==========
@@ -798,6 +812,7 @@ const App = (function () {
     getMyTasks, getSubordinates, getHRReviewPending, showModal, formatDate, getCurrentCycle,
     hasPermission,
     toggleUserMenu,
+    toggleSidebar,
     showChangePassword,
     closeChangePassword,
     changePassword,
