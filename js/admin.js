@@ -2729,6 +2729,10 @@ const Admin = (function () {
               ).join('')}
             </div>
           </div>
+          <div class="form-group" style="position:relative;">
+            <label class="form-label">姓名</label>
+            <input type="text" class="form-input" id="statsNameInput" placeholder="输入姓名筛选" oninput="Admin.onStatsNameInput()" style="min-width:140px;" />
+          </div>
         </div>
         <div class="flex items-end gap-2">
           <button class="btn" onclick="Admin.exportStats()">📥 导出</button>
@@ -2849,6 +2853,14 @@ const Admin = (function () {
     if (planIds.length > 0) tasks = tasks.filter(t => planIds.includes(t.planId));
     if (cycleVals.length > 0) tasks = tasks.filter(t => cycleVals.includes(t.cycle));
     if (statusVals.length > 0) tasks = tasks.filter(t => statusVals.includes(t.status));
+    const nameEl = document.getElementById('statsNameInput');
+    const nameVal = nameEl ? nameEl.value.trim().toLowerCase() : '';
+    if (nameVal) {
+      tasks = tasks.filter(t => {
+        const emp = DB.getById('employees', t.employeeId);
+        return emp && emp.name && emp.name.toLowerCase().includes(nameVal);
+      });
+    }
 
     const allScores = tasks.map(t => t.finalScore || t.supervisorTotalScore || 0).filter(s => s > 0);
     const avgScore = allScores.length > 0 ? (allScores.reduce((a,b) => a+b, 0) / allScores.length) : 0;
@@ -2885,6 +2897,10 @@ const Admin = (function () {
     renderStatsResult();
   }
 
+  function onStatsNameInput() {
+    renderStatsResult();
+  }
+
   // ========== 发送结果到企业微信群（群机器人 Webhook） ==========
   // 读取当前筛选后的任务（与统计列表筛选条件保持一致）
   function getFilteredStatsTasks() {
@@ -2898,6 +2914,14 @@ const Admin = (function () {
     if (planIds.length > 0) tasks = tasks.filter(t => planIds.includes(t.planId));
     if (cycleVals.length > 0) tasks = tasks.filter(t => cycleVals.includes(t.cycle));
     if (statusVals.length > 0) tasks = tasks.filter(t => statusVals.includes(t.status));
+    const nameEl = document.getElementById('statsNameInput');
+    const nameVal = nameEl ? nameEl.value.trim().toLowerCase() : '';
+    if (nameVal) {
+      tasks = tasks.filter(t => {
+        const emp = DB.getById('employees', t.employeeId);
+        return emp && emp.name && emp.name.toLowerCase().includes(nameVal);
+      });
+    }
     return tasks;
   }
 
@@ -3213,6 +3237,14 @@ const Admin = (function () {
     if (planIds.length > 0 && !planIds.includes('all')) tasks = tasks.filter(t => planIds.includes(t.planId));
     if (cycleVals.length > 0 && !cycleVals.includes('all')) tasks = tasks.filter(t => cycleVals.includes(t.cycle));
     if (statusVals.length > 0) tasks = tasks.filter(t => statusVals.includes(t.status));
+    const nameEl = document.getElementById('statsNameInput');
+    const nameVal = nameEl ? nameEl.value.trim().toLowerCase() : '';
+    if (nameVal) {
+      tasks = tasks.filter(t => {
+        const emp = DB.getById('employees', t.employeeId);
+        return emp && emp.name && emp.name.toLowerCase().includes(nameVal);
+      });
+    }
 
     if (tasks.length === 0) { alert('没有符合条件的数据可导出'); return; }
 
@@ -3421,6 +3453,14 @@ const Admin = (function () {
     if (planIds.length > 0) tasks = tasks.filter(t => planIds.includes(t.planId));
     if (cycleVals.length > 0) tasks = tasks.filter(t => cycleVals.includes(t.cycle));
     if (statusVals.length > 0) tasks = tasks.filter(t => statusVals.includes(t.status));
+    const nameEl = document.getElementById('statsNameInput');
+    const nameVal = nameEl ? nameEl.value.trim().toLowerCase() : '';
+    if (nameVal) {
+      tasks = tasks.filter(t => {
+        const emp = DB.getById('employees', t.employeeId);
+        return emp && emp.name && emp.name.toLowerCase().includes(nameVal);
+      });
+    }
 
     if (tasks.length === 0) {
       App.toast('暂无符合条件的绩效数据', 'warning');
