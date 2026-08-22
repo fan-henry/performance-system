@@ -1630,7 +1630,6 @@ const Admin = (function () {
     `);
   }
 
-  // 批量清理旧任务：根据当前筛选条件删除"未完成"任务（默认保留已完成的成绩记录）
   function batchDeleteTasks() {
     const planFilter = document.getElementById('taskPlanFilter') ? document.getElementById('taskPlanFilter').value : '';
     const cycleFilter = document.getElementById('taskCycleFilter') ? document.getElementById('taskCycleFilter').value : '';
@@ -1657,7 +1656,7 @@ const Admin = (function () {
     DB.batchRemove('assessmentTasks', ids);
     DB.save();
     App.toast(`已清理 ${ids.length} 条旧任务`, 'success');
-    DB.log(App.currentUser.name, '考核计划', `批量清理旧任务：${ids.length}条`);
+    DB.log(App.currentUser.name, '考核计划', `批量清理任务：${ids.length}条`);
     renderTaskManagement(document.getElementById('contentArea'));
   }
 
