@@ -1457,7 +1457,6 @@ const Admin = (function () {
         </div>
         <div class="flex gap-2">
           <button class="btn btn-primary btn-sm" onclick="Admin.generateTasks()">⚡ 批量生成考核计划</button>
-          <button class="btn btn-warning btn-sm" onclick="Admin.batchDeleteTasks()">🗑 批量清理旧任务</button>
         </div>
       </div>
 
